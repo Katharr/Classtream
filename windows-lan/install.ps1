@@ -1,7 +1,41 @@
-﻿param([switch]$NoStart, [string]$TeacherIP)
+﻿param([switch]$NoStart, [string]$TeacherIP, [switch]$DependenciesOnly)
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $PSScriptRoot
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$script:OfflineRoot = $null
+
+function Use-OfflinePackage([string]$Folder) {
+    $manifestPath = Join-Path $Folder 'manifest.json'
+    if (-not (Test-Path -LiteralPath $manifestPath)) { throw 'offline folder is incomplete: manifest.json is missing. Extract the entire dependency ZIP.' }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    if ($manifest.schema_version -ne 1 -or $manifest.platform -ne 'win_amd64' -or $manifest.python -ne '3.14' -or $manifest.pip -ne '26.2.2') {
+        throw 'This offline dependency package does not match Windows x64 / Python 3.14 / pip 26.2.2.'
+    }
+    $seen = @{}
+    foreach ($entry in $manifest.files) {
+        if ($entry.path -notmatch '^(requirements-lock\.txt|installers/[A-Za-z0-9_.-]+|wheels/[A-Za-z0-9_.+-]+\.whl)$' -or $entry.sha256 -notmatch '^[a-fA-F0-9]{64}$' -or $seen.ContainsKey($entry.path)) {
+            throw 'Invalid or duplicate file entry in offline manifest.'
+        }
+        $seen[$entry.path] = $true
+        $path = Join-Path $Folder $entry.path
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $entry.sha256) {
+            throw ('Offline file is missing or damaged: ' + $entry.path + '. Extract the dependency ZIP again.')
+        }
+    }
+    foreach ($required in @('requirements-lock.txt', 'wheels/pip-26.2.2-py3-none-any.whl', 'installers/python-3.14.9-amd64.exe', 'installers/vc_redist.x64.exe')) {
+        if (-not $seen.ContainsKey($required)) { throw ('Offline manifest is missing: ' + $required) }
+    }
+    $currentLock = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'requirements-lock.txt')).Replace("`r`n", "`n").Trim()
+    $offlineLock = [IO.File]::ReadAllText((Join-Path $Folder 'requirements-lock.txt')).Replace("`r`n", "`n").Trim()
+    if ($currentLock -ne $offlineLock) { throw 'Offline dependencies and requirements-lock.txt differ. Obtain the matching dependency package.' }
+    $actualWheels = @(Get-ChildItem -LiteralPath (Join-Path $Folder 'wheels') -File)
+    if (-not $actualWheels.Count) { throw 'The offline wheel folder is empty.' }
+    foreach ($wheel in $actualWheels) {
+        if (-not $seen.ContainsKey(('wheels/' + $wheel.Name))) { throw ('Unlisted offline wheel: ' + $wheel.Name) }
+    }
+    $script:OfflineRoot = $Folder
+    Write-Host ('OFFLINE MODE: verified ' + $manifest.files.Count + ' local files; no Python/PyPI/Microsoft downloads.') -ForegroundColor Green
+}
 
 function Get-CompatiblePython([string]$Candidate, [string[]]$PrefixArgs = @()) {
     if (-not $Candidate) { return $null }
@@ -16,6 +50,7 @@ function Get-CompatiblePython([string]$Candidate, [string[]]$PrefixArgs = @()) {
 }
 
 function Get-Download([string]$Url, [string]$Target) {
+    if ($script:OfflineRoot) { throw ('Offline package does not contain a required file. Network downloads are disabled: ' + $Url) }
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         try {
             Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Target -TimeoutSec 180
@@ -30,6 +65,14 @@ function Get-Download([string]$Url, [string]$Target) {
 
 function Get-VerifiedDownload([string]$Url, [string]$Target, [string]$Hash, [string]$Algorithm = 'SHA256') {
     if ((Test-Path -LiteralPath $Target) -and (Get-FileHash -LiteralPath $Target -Algorithm $Algorithm).Hash -eq $Hash) { return }
+    if ($script:OfflineRoot) {
+        $local = Join-Path (Join-Path $script:OfflineRoot 'installers') ([IO.Path]::GetFileName($Target))
+        if (-not (Test-Path -LiteralPath $local) -or (Get-FileHash -LiteralPath $local -Algorithm $Algorithm).Hash -ne $Hash) {
+            throw ('Offline installer missing or damaged: ' + [IO.Path]::GetFileName($Target))
+        }
+        Copy-Item -LiteralPath $local -Destination $Target -Force
+        return
+    }
     $partial = $Target + '.partial'
     Get-Download $Url $partial
     if ((Get-FileHash -LiteralPath $partial -Algorithm $Algorithm).Hash -ne $Hash) { throw ('Download checksum mismatch: ' + $Url) }
@@ -56,8 +99,12 @@ function Install-VisualCppRuntime([string]$Runtime) {
     $downloads = Join-Path $Runtime 'downloads'
     New-Item -ItemType Directory -Force -Path $downloads | Out-Null
     $installer = Join-Path $downloads 'vc_redist.x64.exe'
+    if ($script:OfflineRoot) {
+        Copy-Item -LiteralPath (Join-Path $script:OfflineRoot 'installers/vc_redist.x64.exe') -Destination $installer -Force
+    }
     $signature = if (Test-Path -LiteralPath $installer) { Get-AuthenticodeSignature -LiteralPath $installer }
     if (-not $signature -or $signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+        if ($script:OfflineRoot) { throw 'The offline Microsoft runtime publisher signature could not be verified. Check Windows certificate trust/date or ask the administrator.' }
         $partial = $installer + '.partial.exe'
         Get-Download 'https://aka.ms/vc14/vc_redist.x64.exe' $partial
         $signature = Get-AuthenticodeSignature -LiteralPath $partial
@@ -77,13 +124,16 @@ function Install-VisualCppRuntime([string]$Runtime) {
 
 try {
     Write-Host 'Classtream LAN / teacher installation' -ForegroundColor Cyan
-    Write-Host 'First installation needs Internet access. Students install nothing in HTTP mode.'
+    Write-Host 'A matching offline folder avoids dependency downloads. Students install nothing in HTTP mode.'
     if (-not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') {
         throw 'This package requires Windows 10/11 x64 (Intel/AMD).'
     }
     $runtime = Join-Path $PSScriptRoot 'runtime'
     New-Item -ItemType Directory -Force -Path $runtime | Out-Null
     Start-Transcript -Path (Join-Path $runtime 'install.log') -Append | Out-Null
+    $offlineFolder = Join-Path $PSScriptRoot 'offline'
+    if (Test-Path -LiteralPath $offlineFolder) { Use-OfflinePackage $offlineFolder }
+    else { Write-Host 'ONLINE MODE: first installation needs Internet access.' }
 
     $venvPython = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
     $pythonExe = Get-CompatiblePython $venvPython
@@ -114,9 +164,20 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Could not create .venv.' }
     }
     # Pin the installer tool as well; application versions remain in requirements-lock.txt.
-    & $venvPython -m pip install --disable-pip-version-check 'pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70'
-    if ($LASTEXITCODE -ne 0) { throw 'Could not install the pinned pip. Check Internet/proxy access.' }
-    & $venvPython -m pip install --disable-pip-version-check --index-url https://pypi.org/simple --retries 3 --timeout 30 -r requirements-lock.txt
+    $pipSource = 'pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70'
+    $pipOptions = @('--disable-pip-version-check', '--isolated', '--no-cache-dir')
+    if ($script:OfflineRoot) {
+        $pipSource = Join-Path $script:OfflineRoot 'wheels/pip-26.2.2-py3-none-any.whl'
+        if ((Get-FileHash -LiteralPath $pipSource -Algorithm SHA256).Hash -ne 'fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70') { throw 'Offline pip checksum mismatch.' }
+        $pipOptions += @('--no-index', '--find-links', (Join-Path $script:OfflineRoot 'wheels'))
+    }
+    & $venvPython -m pip install @pipOptions $pipSource
+    if ($LASTEXITCODE -ne 0) { throw 'Could not install the pinned pip. Check runtime/install.log and the dependency source.' }
+    if ($script:OfflineRoot) {
+        & $venvPython -m pip install @pipOptions --only-binary=:all: -r requirements-lock.txt
+    } else {
+        & $venvPython -m pip install @pipOptions --index-url https://pypi.org/simple --retries 3 --timeout 30 -r requirements-lock.txt
+    }
     if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed. Check runtime/install.log and retry.' }
     & $venvPython -m pip check
     if ($LASTEXITCODE -ne 0) { throw 'Dependency validation failed.' }
@@ -126,6 +187,12 @@ try {
     }
     & $venvPython -c "import mss, pyautogui, pydantic_core, uvicorn, websockets, importlib.util; assert importlib.util.find_spec('dxcam'); print('Native/application dependencies OK')"
     if ($LASTEXITCODE -ne 0) { throw 'Application dependency import failed. See runtime/install.log.' }
+
+    if ($DependenciesOnly) {
+        Write-Host 'Dependency preparation complete; run install.cmd to finish teacher setup.' -ForegroundColor Green
+        Stop-Transcript | Out-Null
+        exit 0
+    }
 
     $configPath = Join-Path $PSScriptRoot 'config.json'
     $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json

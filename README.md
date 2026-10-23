@@ -4,13 +4,15 @@
 
 ## 快速开始
 
-1. 教师机使用 Windows 10/11、Intel/AMD x64，连接教学局域网并能联网下载依赖。
+1. 教师机使用 Windows 10/11、Intel/AMD x64，连接教学局域网，并准备联网下载依赖或配套离线依赖包。
 2. 下载本仓库 ZIP 并完整解压，双击根目录 **install.cmd**。自动准备 Python 3.14 x64、独立依赖环境、必要的微软 VC++ 运行库、网卡与防火墙。
 3. 按提示设置教师密码；多网卡时选择学生可访问的教学网络；允许运行库或防火墙的管理员提示。
 4. 登录自动打开的教师页，点击 **New Link** 创建课堂，将面板里的 `http://教师当前IP:8080/class` 网址发给学生。
 5. 学生用浏览器打开网址，输入姓名观看。
 
-以后双击 **start.cmd** 上课，**stop.cmd** 下课。**check.cmd** 检查服务，停机后可用 **password.cmd** 改密。保持教师页在线。首次安装需要联网，首次密码、多网卡选择和管理员提示仍需教师操作。
+以后双击 **start.cmd** 上课，**stop.cmd** 下课。**check.cmd** 检查服务，停机后可用 **password.cmd** 改密。保持教师页在线。没有离线包时首次安装需要联网；首次密码、多网卡选择和管理员提示仍需教师操作。
+
+下载慢或无法上网时，将配套的 `Classtream-Dependencies-Win64-Py314.zip` 解压，把其中 **offline 文件夹和 install.ps1** 一起放入本仓库的 **windows-lan** 目录，覆盖旧 `install.ps1`，再双击根目录 `install.cmd`。看到 `OFFLINE MODE` 即使用本地依赖。包内包含 Python、全部应用依赖、VC++ 运行库和可选 Caddy；只适用于 Windows x64 / Python 3.14。不要把 ZIP 原文件直接放进去，也不要复制其他教师的 `.venv` 或 runtime。
 
 ## 本版功能
 
@@ -53,6 +55,8 @@ python tests/verify_fast_capture.py
 ```
 
 测试使用临时数据库。真实屏幕采集、另一台学生机、全班负载和完全空白 Windows 的系统级首装需按验收单检查。
+
+维护者制作离线依赖包：在 Windows x64 / Python 3.14 下用 `python -m pip wheel --wheel-dir wheels -r windows-lan/requirements-lock.txt pip==26.2.2` 准备 wheel，再将固定版本的 Python、VC++、Caddy 官方安装文件放入 installers 目录，运行 `python tools/build_offline_dependencies.py --wheels wheels --installers installers`。构建器校验固定哈希并生成逐文件 SHA-256 清单。离线二进制文件不提交 Git，按配套 ZIP 分发；安装器可用 `-DependenciesOnly` 只准备和检查依赖，供临时目录验证，不配置网络、防火墙、密码或启动服务。
 
 ## 许可证
 

@@ -7,11 +7,19 @@
 ## 安装与运行
 
 - 教师环境：Windows 10/11、Intel/AMD x64、桌面会话、现代 Chrome/Edge。学生使用现代浏览器。
-- 首次安装需联网访问 Python.org、PyPI 及其下载站，缺少运行库时还需访问微软下载站。安装器优先复用已有 Python 3.14 x64，没有时下载固定 Python 3.14.9 官方安装程序并核对 SHA-256，为当前 Windows 用户安装；在本目录 `.venv` 建立独立环境。
+- 没有配套离线包时，首次安装需联网访问 Python.org、PyPI 及其下载站，缺少运行库时还需访问微软下载站。安装器优先复用已有 Python 3.14 x64，没有时下载固定 Python 3.14.9 官方安装程序并核对 SHA-256，为当前 Windows 用户安装；在本目录 `.venv` 建立独立环境。
 - `requirements-lock.txt` 固定应用依赖，安装器固定 pip 26.2.2 并核对下载哈希。不修改原版 Classtream 安装文件。安装后会验证原生库导入和 Classtream 适配；OpenCV 无法加载时自动下载微软官方 VC++ x64 运行库，验证微软数字签名后安装，可能另需一次管理员确认。
 - 安装器配置防火墙时需要 Windows 管理员确认，不关闭防火墙。学校策略禁止时需网管协助。
 - 全新部署按提示设置教师密码；已有数据库保留原账户和密码。首次密码未设成功会阻止启动；误点 start.cmd 时也会引导安装。日常启动不需要联网或管理员权限。
 - 不安装 Windows 服务，不设置开机自启。保持启动窗口和教师管理页在线。
+
+### 下载慢：使用离线依赖包
+
+将 `Classtream-Dependencies-Win64-Py314.zip` 完整解压，把里面的 **offline 文件夹和 install.ps1** 放到本目录（与 `requirements-lock.txt` 同级），替换旧安装脚本，再双击 `install.cmd`。GitHub 仓库版对应 `windows-lan` 目录；轻量分享包对应 `Classtream-LAN` 目录。看到 **OFFLINE MODE** 即已验证并使用本地依赖。
+
+离线包包含 33 个应用依赖、pip、Python 3.14.9 x64 官方安装器、微软 VC++ x64 运行库及可选 HTTPS 的 Caddy 官方 ZIP。依赖通过 `--no-index --no-cache-dir --only-binary=:all:` 安装，无需编译或在线解析。文件损坏或版本不匹配会明确停止，不会悄悄联网；恢复在线安装可把 offline 文件夹改名。
+
+仅支持 Windows 10/11 Intel/AMD x64、标准 Python 3.14。仍须连接教学局域网，设置密码和批准必要的管理员提示；微软签名信任、Windows N 版媒体组件等系统条件仍需目标机满足。不复制他人的 `.venv` 或 runtime。
 
 ## 默认 HTTP 模式
 

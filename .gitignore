@@ -46,6 +46,7 @@ Thumbs.db
 
 # Local classroom state, credentials, certificates and downloaded executables
 windows-lan/runtime/
+windows-lan/offline/
 windows-lan/bin/*.exe
 windows-lan/config.json.tmp
 *.log
