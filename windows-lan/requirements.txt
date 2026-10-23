@@ -1,0 +1,3 @@
+classtream==1.0.1
+dxcam==0.3.0
+comtypes==1.4.17

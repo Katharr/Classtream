@@ -1,0 +1,5 @@
+Caddy 2.11.7, Windows amd64, unmodified official binary.
+Source: https://github.com/caddyserver/caddy/releases/tag/v2.11.7
+Manifest: https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_checksums.txt
+Official archive SHA-512: c308154504e53755958ffc62d8a2657ab17eefd6dd25c45dbb2c3d93d29519971f77ca652f7d0f2bcb7f980b9ba3822478865e29969d0272d7613550a43152b1
+Expected caddy.exe SHA-256: 5f93a9bd555f3aac9d33af2756ba14b3519d8cca4ffd55256bdaeab444c9db2a

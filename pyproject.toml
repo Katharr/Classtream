@@ -17,12 +17,18 @@ dependencies = [
     "websockets>=12.0",
 ]
 
+[project.optional-dependencies]
+windows-lan = [
+    "dxcam==0.3.0; sys_platform == 'win32'",
+    "comtypes==1.4.17; sys_platform == 'win32'",
+]
+
 [project.scripts]
 classtream = "app.cli:main"
 
 [project.urls]
-Repository = "https://github.com/Mustafahubs/Classtream"
-Issues     = "https://github.com/Mustafahubs/Classtream/issues"
+Repository = "https://github.com/Katharr/Classtream"
+Issues     = "https://github.com/Katharr/Classtream/issues"
 
 [build-system]
 requires      = ["hatchling"]

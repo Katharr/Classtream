@@ -43,3 +43,15 @@ app/static/uploads/*
 # OS
 .DS_Store
 Thumbs.db
+
+# Local classroom state, credentials, certificates and downloaded executables
+windows-lan/runtime/
+windows-lan/bin/*.exe
+windows-lan/config.json.tmp
+*.log
+*.partial
+*.partial.exe
+*.pem
+*.key
+*.pfx
+*.p12
