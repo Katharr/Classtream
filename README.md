@@ -23,7 +23,7 @@
 - 修复局域网 HTTP 页面缺少 `crypto.randomUUID()` 和 Clipboard API 时的兼容问题。
 - HTTP 教师后台仅允许回环访问；学生端不请求麦克风。屏幕、文字聊天与文件通过可信局域网使用。
 - DXGI/GPU 桌面采集、Windows 高精度帧间等待、JPEG 免二次 WebSocket 压缩；不支持 DXGI 时回退 MSS。
-- 默认 10 FPS，可将 `windows-lan/config.json` 的 fps 调为 1–60。设置值是上限，实际受采集、编码和网络限制；每个学生独立接收 JPEG，高帧率会显著增加出口带宽。
+- 默认 60 FPS，可将 `windows-lan/config.json` 的 fps 调为 1–60。设置值是上限，实际受采集、编码和网络限制；每个学生独立接收 JPEG，高帧率会显著增加出口带宽。
 - 可选 HTTPS/Caddy 模式保留在说明中；该模式需要另外解决浏览器证书信任。
 
 HTTP 流量未加密，只用于可信教学局域网。学生知道固定网址即可进入当前课堂。本版不录制或同步传输系统声音，默认 HTTP 不提供麦克风发言。

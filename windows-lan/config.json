@@ -4,5 +4,5 @@
   "http_port": 8080,
   "https_port": 8443,
   "backend_port": 8000,
-  "fps": 10
+  "fps": 60
 }

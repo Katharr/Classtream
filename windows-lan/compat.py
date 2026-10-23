@@ -43,7 +43,7 @@ def replace_once(source, old, new, label):
     return source.replace(old, new, 1)
 
 
-def create_application(public_url, fps=10, teacher_url=None):
+def create_application(public_url, fps=60, teacher_url=None):
     if version("classtream") != "1.0.1":
         raise RuntimeError("This adapter requires classtream==1.0.1; see requirements.txt.")
 

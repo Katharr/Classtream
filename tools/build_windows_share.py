@@ -16,7 +16,7 @@ FILES = (
     "bin/CADDY-README.md", "bin/CADDY-VERIFICATION.txt",
 )
 DEFAULTS = dict(mode="http", teacher_ip="192.0.2.1", http_port=8080,
-                https_port=8443, backend_port=8000, fps=10)
+                https_port=8443, backend_port=8000, fps=60)
 
 
 def build():

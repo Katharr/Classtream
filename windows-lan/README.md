@@ -1,6 +1,6 @@
 # Classtream 局域网教学包 · HTTP 直接观看版
 
-教师首次解压后双击 `install.cmd`；日常双击 `start.cmd`。学生打开 `http://教师机IP:8080/class`，输入姓名即可观看，不安装软件、证书或浏览器插件。默认 10 FPS。
+教师首次解压后双击 `install.cmd`；日常双击 `start.cmd`。学生打开 `http://教师机IP:8080/class`，输入姓名即可观看，不安装软件、证书或浏览器插件。默认 60 FPS（目标上限）。
 
 操作说明见 `教师端说明.md`、`学生端说明.md`、`真机验收.md`。首次安装会识别各自电脑的地址，多网卡时需要选择。分享包中的 `192.0.2.1` 是占位地址，安装时自动替换，不要发给学生。
 
@@ -70,7 +70,7 @@ HTTP 模式的教师登录与管理 HTTP/WS 请求只允许回环来源，不信
 | 旧 ready 标记 | 先 stop.cmd；确认无本包进程后才移除异常关机留下的 runtime/ready.json。 |
 | 安装失败 | 看 runtime/install.log，网络恢复后重试；不清空课堂数据。VC++ 安装日志为 runtime/vc-runtime-install.log；Windows N 版如缺少媒体组件需补装系统 Media Feature Pack。 |
 
-每个学生接收独立 JPEG 帧流，容量取决于画面变化、分辨率和网络。10 FPS 是分享包默认配置值，不保证所有学生实际帧率。
+每个学生接收独立 JPEG 帧流，容量取决于画面变化、分辨率和网络。60 FPS 是分享包默认配置上限，不保证所有学生实际帧率。
 
 采集优先使用 DXcam 0.3.0 / Windows DXGI，按显示器真实坐标匹配输出；不支持或运行中失败时自动回退 MSS。新增依赖 comtypes 1.4.17 与 DXcam 均由安装入口自动安装。高帧率下使用 Python 高精度计时等待，避免 Windows asyncio 小额等待实际约 15.6 毫秒的问题；已压缩的 JPEG 不再叠加 WebSocket deflate。
 
