@@ -47,6 +47,10 @@ Thumbs.db
 # Local classroom state, credentials, certificates and downloaded executables
 windows-lan/runtime/
 windows-lan/offline/
+# Distribute dependency bundles separately; keep binaries out of the source repo.
+*.whl
+*.zip
+*.exe
 windows-lan/bin/*.exe
 windows-lan/config.json.tmp
 *.log

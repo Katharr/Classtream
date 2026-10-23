@@ -14,6 +14,8 @@
 
 下载慢或无法上网时，将配套的 `Classtream-Dependencies-Win64-Py314.zip` 解压，把其中 **offline 文件夹和 install.ps1** 一起放入本仓库的 **windows-lan** 目录，覆盖旧 `install.ps1`，再双击根目录 `install.cmd`。看到 `OFFLINE MODE` 即使用本地依赖。包内包含 Python、全部应用依赖、VC++ 运行库和可选 Caddy；只适用于 Windows x64 / Python 3.14。不要把 ZIP 原文件直接放进去，也不要复制其他教师的 `.venv` 或 runtime。
 
+仓库只保存源码、脚本和说明，不上传依赖包。安装脚本自动检测 `windows-lan/offline`：存在时校验并使用离线依赖，不存在时自动在线下载。离线目录及 ZIP、wheel、EXE 均已加入 Git 忽略规则。
+
 ## 本版功能
 
 - 每次启动检测本机有效 IPv4；单一新地址自动更新，多候选地址时提示选择。HTTP 模式运行中监测 IP 变化并刷新教师页链接。

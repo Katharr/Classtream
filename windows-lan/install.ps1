@@ -133,7 +133,7 @@ try {
     Start-Transcript -Path (Join-Path $runtime 'install.log') -Append | Out-Null
     $offlineFolder = Join-Path $PSScriptRoot 'offline'
     if (Test-Path -LiteralPath $offlineFolder) { Use-OfflinePackage $offlineFolder }
-    else { Write-Host 'ONLINE MODE: first installation needs Internet access.' }
+    else { Write-Host 'ONLINE MODE: no local offline folder found; downloading dependencies as needed.' }
 
     $venvPython = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
     $pythonExe = Get-CompatiblePython $venvPython
