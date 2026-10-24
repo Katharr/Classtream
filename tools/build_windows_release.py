@@ -1,12 +1,11 @@
-"""Build a clean, self-contained Windows release from reviewed source files."""
+"""Build a clean Windows release without bundled dependencies from reviewed source files."""
 import argparse
 import hashlib
 import json
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import zipfile
 
 from build_windows_share import ROOT, FILES, DEFAULTS
-from build_offline_dependencies import INSTALLERS, PIP_HASH
 
 
 README = """Classtream Windows 局域网教学版 {version}
@@ -14,12 +13,15 @@ README = """Classtream Windows 局域网教学版 {version}
 一、先看这里
 适用 Windows 10/11、Intel/AMD 64 位教师机。
 完整解压整个 ZIP 到长期保留的文件夹，不要在压缩软件里直接运行。
-本包已包含离线依赖，不用另下载或复制依赖包。
+本包不含离线依赖。首次安装默认联网下载。
+如需离线安装，请从同一个 Release 单独下载 Classtream-Dependencies-Win64-Py314.zip。
+解压依赖 ZIP，把其中 offline 文件夹和 install.ps1 一起复制到本包的 windows-lan 目录，
+替换同名脚本，再运行根目录 install.cmd。不要直接把依赖 ZIP 放进程序目录。
 请保留 windows-lan 文件夹的位置和名称，入口依赖它。
 
 二、首次使用
 1. 教师机接入学生可以访问的教学局域网。
-2. 双击本目录 install.cmd，看到 OFFLINE MODE 表示使用内置依赖。
+2. 双击本目录 install.cmd；默认 ONLINE MODE，另配离线依赖后为 OFFLINE MODE。
 3. 按提示设置教师密码（用户名 admin），多网卡时选择教学网卡。
 4. 按需批准微软运行库和防火墙的管理员提示。
 5. 登录自动打开的教师页面，点击 New Link 创建课堂。
@@ -37,7 +39,7 @@ password.cmd  停止服务后修改教师密码
 
 四、文件放在哪里
 windows-lan/              程序、配置和详细说明
-windows-lan/offline/      本包内置的离线依赖，不要移动
+windows-lan/offline/      仅在另行解压离线依赖包后出现，本 ZIP 不包含
 windows-lan/教师端说明.md  详细教师使用说明
 windows-lan/学生端说明.md  学生观看说明
 windows-lan/真机验收.md    部署验收单
@@ -57,7 +59,7 @@ LICENSE                   上游许可；适配代码许可见 windows-lan/LICEN
 """
 
 
-def build(dependencies, output, version):
+def build(output, version):
     payloads = {}
     for name in FILES:
         path = ROOT / 'windows-lan' / name
@@ -67,43 +69,15 @@ def build(dependencies, output, version):
         if path.suffix in ('.cmd', '.ps1'):
             data = data.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
         payloads['windows-lan/' + name] = data
-    with zipfile.ZipFile(dependencies) as z:
-        if z.testzip() is not None or len(z.namelist()) != len(set(z.namelist())):
-            raise ValueError('Damaged or duplicate dependency ZIP entries')
-        manifest = json.loads(z.read('offline/manifest.json'))
-        payloads['windows-lan/offline/manifest.json'] = z.read('offline/manifest.json')
-        if (manifest['schema_version'], manifest['platform'], manifest['python'], manifest['pip']) != (1, 'win_amd64', '3.14', '26.2.2'):
-            raise ValueError('Incompatible dependency manifest')
-        expected = {'offline/manifest.json', 'install.ps1', '离线依赖使用说明.txt'}
-        for entry in manifest['files']:
-            name = entry['path']
-            if PurePosixPath(name).is_absolute() or '..' in PurePosixPath(name).parts or '\\' in name:
-                raise ValueError('Unsafe dependency path')
-            key = 'offline/' + name
-            if key in expected:
-                raise ValueError('Duplicate manifest entry')
-            expected.add(key)
-            data = z.read(key)
-            if hashlib.sha256(data).hexdigest() != entry['sha256']:
-                raise ValueError(f'Dependency checksum mismatch: {name}')
-            payloads['windows-lan/' + key] = data
-        if set(z.namelist()) != expected:
-            raise ValueError('Unexpected files in dependency ZIP')
-        if z.read('install.ps1').replace(b'\r\n', b'\n') != payloads['windows-lan/install.ps1'].replace(b'\r\n', b'\n'):
-            raise ValueError('Dependency installer differs from source')
-    if payloads['windows-lan/offline/requirements-lock.txt'].replace(b'\r\n', b'\n') != payloads['windows-lan/requirements-lock.txt'].replace(b'\r\n', b'\n'):
-        raise ValueError('Dependency lock differs from source')
-    for name, (algorithm, digest) in INSTALLERS.items():
-        if hashlib.new(algorithm, payloads['windows-lan/offline/installers/' + name]).hexdigest() != digest:
-            raise ValueError(f'Official installer checksum mismatch: {name}')
-    if hashlib.sha256(payloads['windows-lan/offline/wheels/pip-26.2.2-py3-none-any.whl']).hexdigest() != PIP_HASH:
-        raise ValueError('pip checksum mismatch')
     for name in ('install.cmd', 'start.cmd', 'stop.cmd', 'check.cmd', 'password.cmd', 'LICENSE'):
         payloads[name] = (ROOT / name).read_bytes()
     payloads['先读我.txt'] = README.format(version=version).replace('\n', '\r\n').encode('utf-8-sig')
     for name, data in payloads.items():
-        if not name.startswith('windows-lan/offline/') and b'PRIVATE KEY-----' in data:
+        if b'PRIVATE KEY-----' in data:
             raise ValueError(f'Private key marker: {name}')
+    for name in payloads:
+        if 'offline' in Path(name).parts or Path(name).suffix.lower() in {'.zip', '.whl', '.exe', '.db', '.key', '.pem'}:
+            raise ValueError(f'Forbidden release payload: {name}')
     output.parent.mkdir(parents=True, exist_ok=True)
     prefix = 'Classtream-LAN/'
     with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as z:
@@ -125,8 +99,7 @@ def build(dependencies, output, version):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--dependencies', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--version', required=True)
     args = parser.parse_args()
-    build(args.dependencies, args.output, args.version)
+    build(args.output, args.version)
