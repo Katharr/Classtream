@@ -55,7 +55,7 @@ def create_application(public_url, fps=30, teacher_url=None):
     from app.main import app as original
     from app import main as original_module
     from fast_capture import capture_loop, CAPTURE_TASKS
-    from stream_transport import StreamManager
+    from discussion import DiscussionManager as StreamManager, install_discussion, adapt_discussion_scripts
     from teacher_hotkeys import TeacherShortcuts
     # Test and production data roots stay isolated; this file contains no auth tokens.
     data_root = Path(os.environ.get('CLASSTREAM_DATA', str(Path(__file__).parent / 'runtime' / 'data')))
@@ -101,6 +101,8 @@ def create_application(public_url, fps=30, teacher_url=None):
             local = False
         token = request.headers.get('x-admin-token', '')
         return token if local and token in state.admin_tokens else None
+
+    install_discussion(application, local_teacher)
 
     @application.get('/api/teacher-shortcuts')
     async def shortcut_status(request: Request):
@@ -340,11 +342,12 @@ def create_application(public_url, fps=30, teacher_url=None):
     from classroom_ui import render_template, localize_script
     template = render_template(template)
     scripts = {name: localize_script(name, source) for name, source in scripts.items()}
+    adapt_discussion_scripts(scripts)
 
     @application.get('/classroom-ui/{name}')
     async def classroom_asset(name: str):
         from fastapi.responses import FileResponse
-        if name not in ('classroom.css', 'classroom.js', 'classroom-errors.js', 'teacher-shortcuts.js'):
+        if name not in ('classroom.css', 'classroom.js', 'classroom-errors.js', 'teacher-shortcuts.js', 'discussion.js'):
             return Response(status_code=404)
         return FileResponse(Path(__file__).parent / name, headers=no_cache)
 

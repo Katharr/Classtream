@@ -146,5 +146,17 @@ button:disabled {opacity:.45;cursor:not-allowed}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 /* Single-teacher sharing controls and shortcut hints. */
+#discussion-controls {padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;flex-shrink:0}
+#discussion-teacher-controls {margin-top:8px}
+#discussion-controls button {padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);cursor:pointer;white-space:nowrap}
+#discussion-controls button[aria-pressed=true] {background:#fff1db;color:#7b4300;border-color:#edc48a}
+#discussion-member-settings {margin-top:8px}
+#discussion-member-settings summary {cursor:pointer}
+#discussion-member-settings p {margin:6px 0;color:var(--text-muted)}
+#discussion-member-list {max-height:180px;overflow-y:auto}
+.discussion-member {display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0}
+.discussion-member span {min-width:0;overflow-wrap:anywhere}
+#discussion-error {color:var(--red)}
+#discussion-controls [hidden] {display:none!important}
 #screen-access-panel[hidden] {display:none!important}
 #teacher-shortcut-tooltip {position:fixed;z-index:1500;max-width:calc(100vw - 16px);padding:8px 12px;border-radius:8px;background:#172b4d;color:#fff;font-size:12px;line-height:1.6;box-shadow:0 4px 16px #172b4d30;pointer-events:none;overflow-wrap:anywhere}
