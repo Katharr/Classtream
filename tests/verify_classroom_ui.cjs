@@ -6,8 +6,8 @@ const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
 
 (async () => {
   const browser = await chromium.launch({ channel:'msedge', headless:true });
-  const base='http://127.0.0.1:18765';
-  const output=path.resolve(__dirname,'../../docs/界面设计-2026-10-28');
+  const base=(process.env.CLASSTREAM_TEST_URL || 'http://127.0.0.1:18765');
+  const output=path.resolve(__dirname,'../.artifacts/browser/classroom-ui');
   fs.mkdirSync(output,{recursive:true});
   const errors=[];
   const attach = page => page.on('pageerror',e=>errors.push(e.message));

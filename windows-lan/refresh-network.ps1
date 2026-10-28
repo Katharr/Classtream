@@ -1,6 +1,7 @@
-﻿param([switch]$Watch)
+﻿param([switch]$Watch, [string]$DeploymentRoot = $env:CLASSTREAM_HOME)
 $ErrorActionPreference = 'Stop'
-$runtime = Join-Path $PSScriptRoot 'runtime'
+if (-not $DeploymentRoot) { $DeploymentRoot = $PSScriptRoot }
+$runtime = Join-Path $deploymentRoot 'runtime'
 New-Item -ItemType Directory -Force -Path $runtime | Out-Null
 function Read-Addresses {
     $up = @(Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -ExpandProperty ifIndex)
@@ -18,7 +19,7 @@ try {
             ConvertTo-Json -InputObject @($addresses) -Compress | Set-Content -LiteralPath $temp -Encoding UTF8
             Move-Item -LiteralPath $temp -Destination $path -Force
         } else {
-            $path = Join-Path $PSScriptRoot 'config.json'
+            $path = Join-Path $deploymentRoot 'config.json'
             $config = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
             if (-not $addresses.Count) { throw 'No connected classroom IPv4 adapter. Connect the network, then run start.cmd.' }
             if ($config.teacher_ip -notin $addresses) {

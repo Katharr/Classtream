@@ -1,12 +1,15 @@
-﻿$ErrorActionPreference = 'Stop'
+﻿param([string]$DeploymentRoot = $env:CLASSTREAM_HOME)
+$ErrorActionPreference = 'Stop'
+if (-not $DeploymentRoot) { $DeploymentRoot = $PSScriptRoot }
+$DeploymentRoot = (Resolve-Path -LiteralPath $DeploymentRoot).Path
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    $elevationArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
+    $elevationArgs = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '" -DeploymentRoot "' + $DeploymentRoot + '"'
     $elevated = Start-Process -FilePath powershell.exe -ArgumentList $elevationArgs -Verb RunAs -WindowStyle Hidden -PassThru -Wait
     exit $elevated.ExitCode
 }
-$config = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'config.json') -Raw | ConvertFrom-Json
+$config = Get-Content -LiteralPath (Join-Path $DeploymentRoot 'config.json') -Raw | ConvertFrom-Json
 $mode = [string]$config.mode
 if ($mode -notin @('http', 'https')) { throw 'Invalid mode in config.json.' }
 $port = if ($mode -eq 'http') { [int]$config.http_port } else { [int]$config.https_port }
@@ -21,5 +24,5 @@ if (-not (Get-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue)) {
     Get-NetFirewallRule -Name $ruleName | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -LocalAddress $localAddress -RemoteAddress LocalSubnet | Out-Null
 }
 Write-Host ('Allowed local-subnet TCP ' + $port + ' at ' + $config.teacher_ip)
-New-Item -ItemType Directory -Force -Path (Join-Path $PSScriptRoot 'runtime') | Out-Null
-('Allowed TCP {0} on {1}; remote=LocalSubnet' -f $port, $config.teacher_ip) | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'runtime\firewall-ready.txt') -Encoding UTF8
+New-Item -ItemType Directory -Force -Path (Join-Path $DeploymentRoot 'runtime') | Out-Null
+('Allowed TCP {0} on {1}; remote=LocalSubnet' -f $port, $config.teacher_ip) | Set-Content -LiteralPath (Join-Path $DeploymentRoot 'runtime\firewall-ready.txt') -Encoding UTF8

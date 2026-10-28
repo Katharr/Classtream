@@ -68,6 +68,8 @@ class FrameSource:
 
 
 CAPTURE_TASKS = set()
+META_INTERVAL = 1.0
+CAPTURE_RETRY = 1.0
 
 
 class CapturePipeline:
@@ -85,7 +87,7 @@ class CapturePipeline:
         frame, changed = self.source.grab()
         captured = time.perf_counter()
         if frame is None:
-            return None, (0, 0), self.source.backend
+            raise RuntimeError('No screen frame available')
         if changed or self.resized is None:
             height = max(1, int(frame.shape[0] * 1280 / frame.shape[1]))
             self.resized = cv2.resize(frame, (1280, height), interpolation=cv2.INTER_LINEAR)
@@ -115,14 +117,46 @@ async def capture_loop(monitor_id, rect, manager, settings):
     loop = asyncio.get_running_loop()
     pipeline = None
     count = 0
-    started = time.perf_counter()
+    started = time.monotonic()
     last_log = started
+    last_capture_at = None
+    timings, backend = (0.0, 0.0), 'initializing'
+
+    async def heartbeat():
+        nonlocal count, started, last_log
+        while True:
+            await asyncio.sleep(META_INTERVAL)
+            now = time.monotonic()
+            elapsed = now - started
+            rate = round(count / max(elapsed, .001), 1)
+            count, started = 0, now
+            if not manager.connections.get(monitor_id):
+                continue
+            try:
+                snapshot = manager.latest.get(monitor_id)
+                meta = dict(type='meta', fps=rate,
+                            target_fps=min(30, settings.fps), viewers=manager.total_viewers,
+                            quality=settings.quality, session=settings.session_name,
+                            viewer_list=manager.get_viewer_list(), capture_backend=backend,
+                            capture_ms=round(timings[0], 2), encode_ms=round(timings[1], 2),
+                            stream_epoch=snapshot.epoch if snapshot else 0,
+                            stream_seq=snapshot.seq if snapshot else 0,
+                            capture_age_ms=(round((now - last_capture_at) * 1000, 1)
+                                            if last_capture_at is not None else None),
+                            frozen=manager.frozen, **manager.metrics(monitor_id))
+                await manager.broadcast(monitor_id, json.dumps(meta))
+                if now - last_log >= 5:
+                    logged = {k: v for k, v in meta.items() if k not in ('viewer_list', 'session')}
+                    print(f'Stream monitor={monitor_id}: {json.dumps(logged)}', flush=True)
+                    last_log = now
+            except Exception as exc:
+                print(f'[heartbeat monitor={monitor_id}] {type(exc).__name__}: {exc}', flush=True)
+
+    heartbeat_task = asyncio.create_task(heartbeat())
     try:
         while True:
             try:
                 if not manager.connections.get(monitor_id):
-                    started = time.perf_counter()
-                    count = 0
                     await asyncio.sleep(0.1)
                     continue
                 if pipeline is None:
@@ -136,25 +170,11 @@ async def capture_loop(monitor_id, rect, manager, settings):
                 begin = time.perf_counter()
                 snapshot, timings, backend = await loop.run_in_executor(
                     worker, pipeline.tick, settings.quality, settings.show_cursor)
+                # Static frames count as a healthy capture, without producing JPEGs.
+                last_capture_at = time.monotonic()
                 if snapshot is not None:
                     manager.publish(monitor_id, snapshot)
                     count += 1
-                now = time.perf_counter()
-                elapsed = now - started
-                if elapsed >= 1:
-                    meta = dict(type='meta', fps=round(count / elapsed, 1),
-                                target_fps=min(30, settings.fps), viewers=manager.total_viewers,
-                                quality=settings.quality, session=settings.session_name,
-                                viewer_list=manager.get_viewer_list(), capture_backend=backend,
-                                capture_ms=round(timings[0], 2), encode_ms=round(timings[1], 2),
-                                **manager.metrics(monitor_id))
-                    await manager.broadcast(monitor_id, json.dumps(meta))
-                    if now - last_log >= 5:
-                        logged = {k: v for k, v in meta.items() if k not in ('viewer_list', 'session')}
-                        print(f'Stream monitor={monitor_id}: {json.dumps(logged)}', flush=True)
-                        last_log = now
-                    count = 0
-                    started = now
                 remaining = max(0, 1 / max(1, min(30, settings.fps)) - (time.perf_counter() - begin))
                 if os.name == 'nt' and remaining > 0:
                     await asyncio.to_thread(time.sleep, remaining)
@@ -162,8 +182,10 @@ async def capture_loop(monitor_id, rect, manager, settings):
                     await asyncio.sleep(remaining)
             except Exception as exc:
                 print(f'[capture monitor={monitor_id}] {exc}', flush=True)
-                await asyncio.sleep(1)
+                await asyncio.sleep(CAPTURE_RETRY)
     finally:
+        heartbeat_task.cancel()
+        await asyncio.gather(heartbeat_task, return_exceptions=True)
         if pipeline is not None:
             await loop.run_in_executor(worker, pipeline.close)
         worker.shutdown(wait=True)

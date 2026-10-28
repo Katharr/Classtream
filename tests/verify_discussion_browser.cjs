@@ -1,6 +1,7 @@
 /* Discussion controls in actual teacher/student browsers; synthetic screen only. */
 const assert = require('node:assert/strict');
 const path = require('node:path');
+require('node:fs').mkdirSync(path.resolve(__dirname, '../.artifacts/browser'), { recursive: true });
 const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
 
 (async () => {
@@ -79,12 +80,12 @@ const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
     await host.locator('[data-filter="all"]').click();
     await host.getByRole('button', { name: '禁言：' + name, exact: true }).click();
     await first.waitForFunction(() => document.getElementById('chat-input').disabled);
-    await first.screenshot({ path: path.resolve(__dirname, '../../docs/discussion-student-muted.png') });
+    await first.screenshot({ path: path.resolve(__dirname, '../.artifacts/browser/discussion-student-muted.png') });
     assert.equal(await host.locator('#discussion-member-settings').evaluate(el => el.scrollWidth <= el.clientWidth), true);
-    await host.screenshot({ path: path.resolve(__dirname, '../../docs/discussion-teacher-members.png') });
+    await host.screenshot({ path: path.resolve(__dirname, '../.artifacts/browser/discussion-teacher-members.png') });
     await host.keyboard.press('Escape');
     assert.equal(await host.locator('#discussion-member-settings').isVisible(), false);
-    await host.screenshot({ path: path.resolve(__dirname, '../../docs/discussion-teacher-controls.png') });
+    await host.screenshot({ path: path.resolve(__dirname, '../.artifacts/browser/discussion-teacher-controls.png') });
     await hostContext.request.post(base + '/api/session/new', { headers, data: { name: 'Next discussion test' } });
     await host.waitForFunction(() => document.querySelectorAll('#discussion-member-list button[aria-pressed=true]').length === 0);
     assert.deepEqual(errors, []);

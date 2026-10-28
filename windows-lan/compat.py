@@ -58,7 +58,8 @@ def create_application(public_url, fps=30, teacher_url=None):
     from discussion import DiscussionManager as StreamManager, install_discussion, adapt_discussion_scripts
     from teacher_hotkeys import TeacherShortcuts
     # Test and production data roots stay isolated; this file contains no auth tokens.
-    data_root = Path(os.environ.get('CLASSTREAM_DATA', str(Path(__file__).parent / 'runtime' / 'data')))
+    deployment_home = Path(os.environ.get('CLASSTREAM_HOME') or Path(__file__).parent)
+    data_root = Path(os.environ.get('CLASSTREAM_DATA', str(deployment_home / 'runtime' / 'data')))
     shortcuts = TeacherShortcuts(data_root.parent / 'teacher-shortcuts.json'
                                 if data_root.name == 'data' else data_root / 'teacher-shortcuts.json')
     if not isinstance(state.manager, StreamManager):
@@ -171,7 +172,7 @@ def create_application(public_url, fps=30, teacher_url=None):
         if not http_mode:
             return public_url
         try:
-            cfg = json.loads((Path(__file__).parent / 'config.json').read_text('utf-8-sig'))
+            cfg = json.loads((deployment_home / 'config.json').read_text('utf-8-sig'))
             return f"http://{ipaddress.IPv4Address(cfg['teacher_ip'])}:{int(cfg['http_port'])}"
         except (OSError, ValueError, KeyError):
             return public_url
@@ -209,52 +210,61 @@ def create_application(public_url, fps=30, teacher_url=None):
         "        document.dispatchEvent(new Event('classtream:name-changed'));\n      }\n      return;",
         'server assigned identity')
     scripts['stream-client.js'] = (Path(__file__).parent / 'stream-client.js').read_text('utf-8')
-    scripts['stream.js'] = "import { createFrameReceiver } from './stream-client.js';\n" + scripts['stream.js']
+    scripts['stream.js'] = "import { connectScreen, closeScreen } from './stream-client.js';\n" + scripts['stream.js']
     scripts['stream.js'] = replace_once(scripts['stream.js'],
         'new URLSearchParams({ session_id: SESSION_ID })',
         "new URLSearchParams({ session_id: SESSION_ID, stream: '2' })", 'stream negotiation')
-    scripts['stream.js'] = replace_once(scripts['stream.js'],
-        "  const img = document.getElementById('screen-img');",
-        "  const img = document.getElementById('screen-img');\n"
-        "  const receiveFrame = createFrameReceiver(ws, img, _hideSinglePrivate);", 'single receiver')
-    scripts['stream.js'] = replace_once(scripts['stream.js'],
-        "    if (state.paused) return;\n    // Live frame arrived — hide private overlay if it was showing\n"
-        "    _hideSinglePrivate();\n    const url = URL.createObjectURL(e.data);\n"
-        "    const old = img.src;\n    img.src = url;\n"
-        "    if (old && old.startsWith('blob:')) URL.revokeObjectURL(old);",
-        '    receiveFrame(e.data);', 'single frame rendering')
-    # Both original grid and reconnect paths use the same receiver.
-    if scripts['stream.js'].count('let prev = null;') != 2:
-        raise RuntimeError('Unsupported grid stream source.')
-    scripts['stream.js'] = scripts['stream.js'].replace('let prev = null;',
-        'const receiveFrame = createFrameReceiver(ws, gimg, () => _hideCellPrivate(cell, gimg));')
-    for indent in ('      ', '    '):
-        scripts['stream.js'] = replace_once(scripts['stream.js'],
-            indent + 'if (state.paused) return;\n' + indent + '_hideCellPrivate(cell, gimg);\n' +
-            indent + 'const url = URL.createObjectURL(e.data); gimg.src = url;\n' +
-            indent + 'if (prev) URL.revokeObjectURL(prev); prev = url;',
-            indent + 'receiveFrame(e.data);', 'grid frame rendering ' + str(len(indent)))
-    scripts['stream.js'] = replace_once(scripts['stream.js'],
-        "document.createElement('img')", "document.createElement('canvas')", 'grid canvas')
-    # Globally hidden students retry through the normal authenticated permission path.
-    # Restoring sharing therefore resumes permitted students without manual refresh.
-    scripts['stream.js'] = """function retryGlobalPrivacy(data, ws, reconnect) {
-  if (!['global', 'global_private'].includes(data.reason)) return;
-  setTimeout(() => { if (Object.values(state.wsMap).includes(ws)) reconnect(); }, 2000);
+    # Replace the three duplicated connection paths together; the existing module
+    # still owns authentication, monitor buttons and private-screen overlays.
+    begin = scripts['stream.js'].index('function _connectSingle(id) {')
+    end = scripts['stream.js'].index('export function closeAll() {', begin)
+    scripts['stream.js'] = scripts['stream.js'][:begin] + """function _connectSingle(id) {
+  connectScreen(makeWsUrl(id), 'single', document.getElementById('screen-img'), {
+    register: sendRegister, message: _onMessage, frame: _hideSinglePrivate,
+    private: (_data, retry) => _showSinglePrivate(() => { _hideSinglePrivate(); retry(); }),
+    reconnect: () => _connectSingle(id),
+  });
 }
-""" + scripts['stream.js']
+
+export function selectAllGrid() {
+  closeAll();
+  state.currentMode = 'grid';
+  document.getElementById('single-view').style.display = 'none';
+  document.getElementById('grid-view').style.display = 'grid';
+  _setActiveMonitorBtn(0);
+  const grid = document.getElementById('grid-view');
+  grid.innerHTML = '';
+  const real = state.monitors.filter(m => m.id !== 0);
+  grid.style.gridTemplateColumns = real.length === 1 ? '1fr' : 'repeat(2,1fr)';
+  real.forEach(m => {
+    const cell = document.createElement('div'); cell.className = 'gcell'; cell.title = 'Double-click to focus';
+    const label = document.createElement('div'); label.className = 'gcell-label'; label.textContent = m.label;
+    const hint = document.createElement('div'); hint.className = 'gcell-hint'; hint.textContent = 'dbl-click to focus';
+    const canvas = document.createElement('canvas'); canvas.className = 'grid-img';
+    canvas.setAttribute('aria-label', m.label);
+    cell.append(label, hint, canvas); cell.ondblclick = () => selectMonitor(m.id);
+    grid.appendChild(cell);
+    _reconnectGridCell(m.id, canvas, cell);
+  });
+}
+
+function _reconnectGridCell(id, canvas, cell) {
+  connectScreen(makeWsUrl(id), `grid-${id}`, canvas, {
+    register: sendRegister, message: _onMessage, frame: () => _hideCellPrivate(cell, canvas), cell,
+    private: (_data, retry) => _showCellPrivate(cell, canvas, () => { _hideCellPrivate(cell, canvas); retry(); }),
+    reconnect: () => _reconnectGridCell(id, canvas, cell),
+  });
+}
+
+""" + scripts['stream.js'][end:]
     scripts['stream.js'] = replace_once(scripts['stream.js'],
-        '        _showSinglePrivate(() => { _hideSinglePrivate(); _connectSingle(id); });',
-        '        retryGlobalPrivacy(data, ws, () => _connectSingle(id));\n'
-        '        _showSinglePrivate(() => { _hideSinglePrivate(); _connectSingle(id); });', 'global single resume')
+        "  ws._dead = true;\n  ws.close();", "  closeScreen(ws);", 'stream cleanup')
     scripts['stream.js'] = replace_once(scripts['stream.js'],
-        '          _showCellPrivate(cell, gimg, () =>',
-        '          retryGlobalPrivacy(data, ws, () => _reconnectGridCell(m.id, gimg, cell));\n'
-        '          _showCellPrivate(cell, gimg, () =>', 'global grid resume')
-    scripts['stream.js'] = replace_once(scripts['stream.js'],
-        '\n        _showCellPrivate(cell, gimg, () =>',
-        '\n        retryGlobalPrivacy(data, ws, () => _reconnectGridCell(id, gimg, cell));\n'
-        '\n        _showCellPrivate(cell, gimg, () =>', 'global grid reconnect resume')
+        '  setConnState(true);', '', 'no connection-only green light')
+    scripts['viewers.js'] = replace_once(scripts['viewers.js'],
+        "  document.getElementById('conn-state').style.color = 'var(--green)';\n"
+        "  document.getElementById('conn-state').textContent = '● Connected';\n",
+        '', 'meta is not proof of a current picture')
     scripts['controls.js'] = replace_once(scripts['controls.js'],
         'state.paused = !state.paused;',
         "state.paused = !state.paused;\n  window.dispatchEvent(new Event('classtream-pause'));", 'pause repaint')

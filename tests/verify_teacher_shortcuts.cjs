@@ -1,11 +1,11 @@
-/* Teacher commands against stream_fixture.py, isolated from the real classroom. */
+/* Teacher commands against tools/stream_fixture.py, isolated from the real classroom. */
 const assert=require('node:assert/strict');
 const path=require('node:path');
 const fs=require('node:fs');
 const {chromium}=require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
 (async()=>{
   const browser=await chromium.launch({channel:'msedge',headless:true});
-  const base='http://127.0.0.1:18765', errors=[];
+  const base=(process.env.CLASSTREAM_TEST_URL || 'http://127.0.0.1:18765'), errors=[];
   const context=await browser.newContext({viewport:{width:1440,height:960}});
   let headers;
   try {
@@ -20,7 +20,13 @@ const {chromium}=require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
     const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
     await page.goto(base+'/?host=fixture');
     await page.waitForFunction(()=>document.getElementById('screen-img').width===640);
+    // A previous run disables native keys in finally; make fixture reruns independent.
+    await assertEventually(async()=>(await (await context.request.get(base+'/api/teacher-shortcuts',{headers})).json()).ready);
+    const initial=(await (await context.request.get(base+'/api/teacher-shortcuts',{headers})).json());
+    if(!initial.auto_enable)await context.request.post(base+'/api/teacher-shortcuts',{headers,data:{enabled:true}});
     await assertEventually(async()=>(await (await context.request.get(base+'/api/teacher-shortcuts',{headers})).json()).enabled);
+    // The API can be enabled before the page has rendered its asynchronous poll.
+    await page.waitForFunction(()=>document.getElementById('teacher-global-enabled').checked);
     const defaults=(await (await context.request.get(base+'/api/teacher-shortcuts',{headers})).json()).bindings;
     assert.equal(defaults.hide,'Ctrl+Alt+Shift+Y');
     assert.equal(defaults.restore,'Ctrl+Alt+Shift+Z');
@@ -92,7 +98,7 @@ const {chromium}=require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
     await student.evaluate(async()=>(await import('/static/js/stream.js')).sendChatMsg({type:'chat:send',text:'冻结期间仍能讨论'}));
     await page.locator('.msg-content').filter({hasText:'冻结期间仍能讨论'}).waitFor({state:'attached'});
     await page.locator('#teacher-privacy-banner').waitFor({state:'visible'});
-    const output=path.resolve(__dirname,'../../docs/快捷键-2026-10-28');fs.mkdirSync(output,{recursive:true});
+    const output=path.resolve(__dirname,'../.artifacts/browser/teacher-shortcuts');fs.mkdirSync(output,{recursive:true});
     await page.screenshot({path:path.join(output,'01-教师冻结共享.png')});
     assert.equal(await page.locator('#teacher-hide-btn').innerText(),'解除冻结');
     await page.locator('#teacher-hide-btn').hover();

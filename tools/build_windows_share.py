@@ -7,7 +7,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "windows-lan"
 FILES = (
-    "compat.py", "classroom_ui.py", "classroom.css", "classroom.js", "classroom-errors.js", "discussion.py", "discussion.js", "teacher-shortcuts.js", "teacher_hotkeys.py", "lan.py", "windows_job.py", "fast_capture.py", "stream_transport.py", "stream-client.js", "config.json",
+    "compat.py", "classroom_ui.py", "classroom.css", "classroom.js", "classroom-errors.js", "discussion.py", "discussion.js", "teacher-shortcuts.js", "teacher_hotkeys.py", "lan.py", "recover-service.ps1", "startup_lock.py", "windows_job.py", "fast_capture.py", "stream_transport.py", "stream-client.js", "config.json",
     "screen-pan.js", "requirements.txt", "requirements-lock.txt", "setup.cmd", "start.cmd",
     "stop.cmd", "check.cmd", "allow-firewall.cmd", "allow-firewall.ps1",
     "README.md", "先读我.txt", "LICENSE", "browser-compat.js", "install.cmd",

@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import struct
 import sys
+import time
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import cv2
@@ -161,6 +163,73 @@ async def check_ack_timeout():
     print('PASS: explicit resync keyframe; missing ACK closes rather than accumulating data; sender tasks drained.')
 
 
+async def check_pacing():
+    manager, store = StreamManager(), FrameStore()
+    frame = np.zeros((256, 384, 3), np.uint8)
+    initial = store.update(frame, 70, (0, 0, False))
+    manager.latest[1] = initial
+    frame[:] = np.random.default_rng(5).integers(0, 256, frame.shape, np.uint8)
+    latest = store.update(frame, 70, (0, 0, False))
+    viewer = SimpleNamespace(monitor=1, stopped=False, resync=False,
+                             epoch=0, versions=(), last_seq=0)
+    clock, delays = [100.0], []
+    manager.next_send = 100.4
+
+    async def advance(delay):
+        delays.append(delay)
+        clock[0] += delay
+        # The image changed while the viewer was waiting for bandwidth.
+        manager.latest[1] = latest
+
+    with patch('stream_transport.time', SimpleNamespace(monotonic=lambda: clock[0])), \
+            patch('stream_transport.asyncio', SimpleNamespace(sleep=advance)):
+        snapshot, payload = await manager.paced_packet(viewer)
+        assert snapshot.seq == latest.seq and unpack(payload)[0]['seq'] == latest.seq
+        assert len(payload) > len(packet(initial, 0, ())) * 5
+        assert abs(manager.next_send - clock[0] - len(payload) / manager.bytes_per_second) < 1e-9
+        sizes = [len(payload)]
+        for _ in range(4):
+            snapshot, payload = await manager.paced_packet(viewer)
+            sizes.append(len(payload))
+        assert abs(sum(delays) - .4 - sum(sizes[:-1]) / manager.bytes_per_second) < 1e-9
+
+    # A cancelled waiter must not leave a future bandwidth reservation behind.
+    manager.next_send = time.monotonic() + 10
+    before = manager.next_send
+    pending = asyncio.create_task(manager.paced_packet(viewer))
+    await asyncio.sleep(.01)
+    pending.cancel()
+    await asyncio.gather(pending, return_exceptions=True)
+    assert manager.next_send == before and not manager.pace_lock.locked()
+    manager.next_send = 0
+    assert await manager.paced_packet(viewer) is not None
+    print('PASS: fresh cumulative snapshot after pacing, actual-byte budget across five grants, cancelled waiter leaves no reservation.')
+
+
+async def check_large_slow_peer():
+    manager, store = StreamManager(), FrameStore()
+    blocked, fast = Browser(block_send=True), Browser()
+    receivers = []
+    for browser in (blocked, fast):
+        await manager.connect(browser.ws, 1)
+        receivers.append(asyncio.create_task(browser.consume()))
+    frame = np.random.default_rng(7).integers(0, 256, (720, 1280, 3), np.uint8)
+    manager.publish(1, store.update(frame, 70, (0, 0, True)))
+    await blocked.blocked.wait()
+    for i in range(1, 8):
+        manager.publish(1, store.update(frame, 70, (i, i, True)))
+    await until(lambda: manager.peers[id(fast.ws)].last_seq == store.latest.seq, timeout=1)
+    assert manager.peers[id(blocked.ws)].frames_sent == 0
+    assert manager.peers[id(fast.ws)].frames_sent >= 1
+    for browser in (blocked, fast):
+        manager.disconnect(browser.ws, 1)
+    for task in receivers:
+        task.cancel()
+    await asyncio.gather(*receivers, return_exceptions=True)
+    await manager.shutdown()
+    print('PASS: blocked 1280x720 noisy keyframe does not hold the global pacer or stop the healthy viewer.')
+
+
 async def check_freeze():
     from app import state
     manager, store = StreamManager(), FrameStore()
@@ -203,7 +272,7 @@ async def check_freeze():
     manager.publish(1, initial)
     await until(lambda: manager.peers[id(student.ws)].frames_sent == 1)
     entered, release = asyncio.Event(), asyncio.Event()
-    async def queued_pace(_):
+    async def queued_pace():
         entered.set()
         await release.wait()
     manager.pace = queued_pace
@@ -226,4 +295,6 @@ if __name__ == '__main__':
     check_rectangles()
     asyncio.run(check_peers())
     asyncio.run(check_ack_timeout())
+    asyncio.run(check_pacing())
+    asyncio.run(check_large_slow_peer())
     asyncio.run(check_freeze())

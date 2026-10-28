@@ -6,7 +6,7 @@ const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   const errors = [];
   try {
-    const base = 'http://127.0.0.1:18765';
+    const base = (process.env.CLASSTREAM_TEST_URL || 'http://127.0.0.1:18765');
     for (const teacher of [true, false]) {
       const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
       if (teacher) {

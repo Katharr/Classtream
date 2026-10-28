@@ -1,6 +1,7 @@
-/* Real browser checks against stream_fixture.py, never the live classroom. */
+/* Real browser checks against tools/stream_fixture.py, never the live classroom. */
 const assert = require('node:assert/strict');
 const path = require('node:path');
+require('node:fs').mkdirSync(path.resolve(__dirname, '../.artifacts/browser'), { recursive: true });
 const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
 
 (async () => {
@@ -8,7 +9,7 @@ const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
   const contexts = [];
   const errors = [];
   try {
-    const base = 'http://127.0.0.1:18765';
+    const base = (process.env.CLASSTREAM_TEST_URL || 'http://127.0.0.1:18765');
     const hostContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     contexts.push(hostContext);
     const login = await hostContext.request.post(base + '/api/admin/login', {
@@ -81,7 +82,7 @@ const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
     await host.waitForTimeout(400);
     const idleAfter = await stats();
     assert.equal(idleAfter.stream_bytes, idleBefore.stream_bytes);
-    await host.screenshot({ path: path.resolve(__dirname, '../../docs/低延迟浏览器验收.png') });
+    await host.screenshot({ path: path.resolve(__dirname, '../.artifacts/browser/stream.png') });
     // Permissions remain enforced by upstream APIs and close all student senders.
     await hostContext.request.post(base + '/api/screen/private', {
       headers: { 'x-admin-token': token }, data: { enabled: true },

@@ -53,14 +53,17 @@ const conn = document.getElementById('conn-state');
 const stageStatus = document.getElementById('stage-status');
 const live = document.getElementById('live-badge');
 function updateStatus() {
-  const connected = conn.textContent.includes('已连接');
-  const text = teacher && state.sharingFrozen ? '学生画面已冻结' : state.paused ? '画面已暂停 · 可继续观看' : connected ? '正在共享' : '正在连接';
+  const phase = conn.dataset.phase || 'waiting';
+  const connected = phase === 'live';
+  const text = connected ? teacher && state.sharingFrozen ? '学生画面已冻结' : '正在共享' : conn.dataset.message || '正在等待老师的画面…';
   stageStatus.textContent = text;
-  live.textContent = connected ? '● 课堂进行中' : '● 连接中';
+  const badge = { paused:'画面已暂停', frozen:'教师已冻结', source:'画面暂不可用', lagging:'画面落后',
+    interrupted:'画面中断', reconnecting:'正在重连', ended:'连接已结束', waiting:'等待画面' };
+  live.textContent = '● ' + (connected ? '课堂进行中' : badge[phase] || '等待画面');
   live.style.color = connected ? 'var(--green)' : 'var(--text-dim)';
   document.getElementById('btn-pause')?.setAttribute('aria-pressed',String(state.paused));
 }
-new MutationObserver(updateStatus).observe(conn,{childList:true,characterData:true,subtree:true});
+new MutationObserver(updateStatus).observe(conn,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['data-phase','data-message']});
 window.addEventListener('classtream-pause',()=>queueMicrotask(updateStatus));
 window.addEventListener('classtream:sharing-status',updateStatus);
 updateStatus();

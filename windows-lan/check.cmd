@@ -1,8 +1,9 @@
 @echo off
 setlocal
+if not defined CLASSTREAM_HOME set "CLASSTREAM_HOME=%~dp0"
 cd /d "%~dp0"
-if exist ".venv\Scripts\python.exe" (
-  ".venv\Scripts\python.exe" lan.py check
+if exist "%CLASSTREAM_HOME%\.venv\Scripts\python.exe" (
+  "%CLASSTREAM_HOME%\.venv\Scripts\python.exe" lan.py check
 ) else (
   python lan.py check
 )

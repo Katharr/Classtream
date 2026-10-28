@@ -1,5 +1,8 @@
 ﻿param([switch]$NoStart, [string]$TeacherIP, [switch]$DependenciesOnly)
 $ErrorActionPreference = 'Stop'
+$deploymentRoot = if ($env:CLASSTREAM_HOME) { $env:CLASSTREAM_HOME } else { $PSScriptRoot }
+$deploymentRoot = (Resolve-Path -LiteralPath $deploymentRoot).Path
+$env:CLASSTREAM_HOME = $deploymentRoot
 Set-Location -LiteralPath $PSScriptRoot
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $script:OfflineRoot = $null
@@ -128,14 +131,14 @@ try {
     if (-not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') {
         throw 'This package requires Windows 10/11 x64 (Intel/AMD).'
     }
-    $runtime = Join-Path $PSScriptRoot 'runtime'
+    $runtime = Join-Path $deploymentRoot 'runtime'
     New-Item -ItemType Directory -Force -Path $runtime | Out-Null
     Start-Transcript -Path (Join-Path $runtime 'install.log') -Append | Out-Null
     $offlineFolder = Join-Path $PSScriptRoot 'offline'
     if (Test-Path -LiteralPath $offlineFolder) { Use-OfflinePackage $offlineFolder }
     else { Write-Host 'ONLINE MODE: no local offline folder found; downloading dependencies as needed.' }
 
-    $venvPython = Join-Path $PSScriptRoot '.venv\Scripts\python.exe'
+    $venvPython = Join-Path $deploymentRoot '.venv\Scripts\python.exe'
     $pythonExe = Get-CompatiblePython $venvPython
     if ((Test-Path -LiteralPath $venvPython) -and -not $pythonExe) {
         throw 'Existing .venv uses an unsupported or moved Python. Rename .venv, then retry.'
@@ -160,7 +163,7 @@ try {
     }
     Write-Host ('Python: ' + $pythonExe)
     if (-not (Test-Path -LiteralPath $venvPython)) {
-        & $pythonExe -m venv .venv
+        & $pythonExe -m venv (Join-Path $deploymentRoot '.venv')
         if ($LASTEXITCODE -ne 0) { throw 'Could not create .venv.' }
     }
     # Pin the installer tool as well; application versions remain in requirements-lock.txt.
@@ -194,7 +197,7 @@ try {
         exit 0
     }
 
-    $configPath = Join-Path $PSScriptRoot 'config.json'
+    $configPath = Join-Path $deploymentRoot 'config.json'
     $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
     # Show every active IPv4 adapter so a VPN/default route cannot silently choose the classroom network.
     $up = @(Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -ExpandProperty ifIndex)
@@ -228,20 +231,20 @@ try {
     }
     $config.teacher_ip = $selected.IPAddress
     $config | ConvertTo-Json | Set-Content -LiteralPath $configPath -Encoding UTF8
-    if ($config.mode -eq 'https' -and -not (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'bin\caddy.exe'))) {
+    if ($config.mode -eq 'https' -and -not (Test-Path -LiteralPath (Join-Path $deploymentRoot 'bin\caddy.exe'))) {
         $downloads = Join-Path $runtime 'downloads'
         New-Item -ItemType Directory -Force -Path $downloads | Out-Null
         $caddyZip = Join-Path $downloads 'caddy_2.11.7_windows_amd64.zip'
         Get-VerifiedDownload 'https://github.com/caddyserver/caddy/releases/download/v2.11.7/caddy_2.11.7_windows_amd64.zip' $caddyZip 'c308154504e53755958ffc62d8a2657ab17eefd6dd25c45dbb2c3d93d29519971f77ca652f7d0f2bcb7f980b9ba3822478865e29969d0272d7613550a43152b1' 'SHA512'
         $unpacked = Join-Path $downloads 'caddy'
         Expand-Archive -LiteralPath $caddyZip -DestinationPath $unpacked -Force
-        $bin = Join-Path $PSScriptRoot 'bin'
+        $bin = Join-Path $deploymentRoot 'bin'
         New-Item -ItemType Directory -Force -Path $bin | Out-Null
         Copy-Item -LiteralPath (Join-Path $unpacked 'caddy.exe') -Destination (Join-Path $bin 'caddy.exe')
     }
     & $venvPython lan.py prepare
     if ($LASTEXITCODE -ne 0) { throw 'Configuration validation failed.' }
-    & $venvPython -c "import os; from pathlib import Path; os.environ['CLASSTREAM_DATA']=str(Path('runtime/data').resolve()); from compat import create_application; create_application('http://127.0.0.1:8080'); print('Classtream adapter OK')"
+    & $venvPython -c "import os; from pathlib import Path; os.environ['CLASSTREAM_DATA']=str(Path(os.environ['CLASSTREAM_HOME']) / 'runtime' / 'data'); from compat import create_application; create_application('http://127.0.0.1:8080'); print('Classtream adapter OK')"
     if ($LASTEXITCODE -ne 0) { throw 'Classtream compatibility validation failed. See runtime/install.log.' }
     $passwordPending = Join-Path $runtime 'password-required'
     if (-not (Test-Path -LiteralPath (Join-Path $runtime 'data\classtream.db')) -or (Test-Path -LiteralPath $passwordPending)) {

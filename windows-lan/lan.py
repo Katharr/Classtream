@@ -18,16 +18,17 @@ import urllib.request
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-RUNTIME = ROOT / "runtime"
+HOME = Path(os.environ.get("CLASSTREAM_HOME") or ROOT).resolve()
+RUNTIME = HOME / "runtime"
 PUBLIC = RUNTIME / "student-setup"
-CADDY = ROOT / "bin" / "caddy.exe"
+CADDY = HOME / "bin" / "caddy.exe"
 CADDY_VERSION = "2.11.7"
 # Checked against the publisher's SHA-512 release manifest before bundling.
 CADDY_SHA256 = "5f93a9bd555f3aac9d33af2756ba14b3519d8cca4ffd55256bdaeab444c9db2a"
 
 
 def configuration():
-    cfg = json.loads((ROOT / "config.json").read_text("utf-8-sig"))
+    cfg = json.loads((HOME / "config.json").read_text("utf-8-sig"))
     cfg.setdefault("fps", 30)
     cfg.setdefault("mode", "http")
     cfg.setdefault("http_port", 8080)
@@ -215,11 +216,11 @@ def update_network_address(cfg, addresses):
     """Keep the existing connected adapter; switch only with one unambiguous replacement."""
     if cfg['teacher_ip'] in addresses or len(addresses) != 1:
         return cfg
-    raw = json.loads((ROOT / 'config.json').read_text('utf-8-sig'))
+    raw = json.loads((HOME / 'config.json').read_text('utf-8-sig'))
     raw['teacher_ip'] = addresses[0]
-    temporary = ROOT / 'config.json.tmp'
+    temporary = HOME / 'config.json.tmp'
     temporary.write_text(json.dumps(raw, indent=2), 'utf-8')
-    temporary.replace(ROOT / 'config.json')
+    temporary.replace(HOME / 'config.json')
     updated = configuration()
     ready = RUNTIME / 'ready.json'
     data = json.loads(ready.read_text('utf-8'))
@@ -256,7 +257,7 @@ def serve(cfg):
             listener.close()
 
 
-def start(cfg, open_browser=False):
+def start(cfg, open_browser=False, on_ready=None):
     from windows_job import ProcessJob
     if (RUNTIME / 'password-required').exists():
         raise RuntimeError('First-time password setup is incomplete. Run install.cmd before starting.')
@@ -275,7 +276,7 @@ def start(cfg, open_browser=False):
             env = os.environ.copy()
             env["PYTHONIOENCODING"] = "utf-8"
             env["PYTHONUNBUFFERED"] = "1"
-            backend = subprocess.Popen([sys.executable, str(ROOT / "lan.py"), "serve"],
+            backend = subprocess.Popen([sys.executable, str(ROOT / "lan.py"), "serve", '--home', str(HOME)],
                 cwd=ROOT, env=env, stdout=backend_log, stderr=subprocess.STDOUT,
                 creationflags=flags)
             children.append(backend)
@@ -293,16 +294,18 @@ def start(cfg, open_browser=False):
             print(f"Student: {cfg['public_url']}/class")
             print('HTTP: no student installation; microphone disabled.' if cfg['mode'] == 'http'
                   else f"Student certificate package: {RUNTIME / 'student-setup.zip'}")
-            print('Keep this window open. Ctrl+C or stop.cmd stops the service.', flush=True)
+            print('Keep this window open. Close it or press Ctrl+C to stop. Run start.cmd to restart.', flush=True)
             if open_browser:
                 webbrowser.open(cfg['teacher_url'])
             if cfg['mode'] == 'http' and os.name == 'nt':
                 (RUNTIME / 'network-addresses.json').unlink(missing_ok=True)
                 watcher = subprocess.Popen(['powershell.exe', '-NoProfile', '-ExecutionPolicy',
-                    'Bypass', '-File', str(ROOT / 'refresh-network.ps1'), '-Watch'],
+                    'Bypass', '-File', str(ROOT / 'refresh-network.ps1'), '-DeploymentRoot', str(HOME), '-Watch'],
                     cwd=ROOT, stdout=backend_log, stderr=subprocess.STDOUT, creationflags=flags)
                 children.append(watcher)
                 job.add(watcher)
+            if on_ready:
+                on_ready()
             while True:
                 snapshot = RUNTIME / 'network-addresses.json'
                 if cfg['mode'] == 'http' and snapshot.exists():
@@ -398,12 +401,32 @@ def import_data(source):
     print(f"Copied data to {target}. Original data was retained.")
 
 
+def launch(cfg, open_browser=False):
+    """One-click restart: serialize startup, recover this deployment, then serve."""
+    if os.name != 'nt':
+        return start(cfg, open_browser=open_browser)
+    from startup_lock import StartupLock
+    with StartupLock(RUNTIME / 'startup.lock') as lock:
+        subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                        '-File', str(ROOT / 'recover-service.ps1'),
+                        '-DeploymentRoot', str(HOME), '-CodeRoot', str(ROOT)], check=True)
+        start(configuration(), open_browser=open_browser, on_ready=lock.release)
+
+
 def main():
+    global HOME, RUNTIME, PUBLIC, CADDY
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["start", "stop", "serve", "check", "prepare", "export-students", "import-data", 'password', 'open-teacher'])
+    parser.add_argument("command", choices=["launch", "start", "stop", "serve", "check", "prepare", "export-students", "import-data", 'password', 'open-teacher'])
+    parser.add_argument('--home', help='Machine-specific configuration and runtime directory')
     parser.add_argument("--source", help="Existing Classtream data directory for import-data")
     parser.add_argument('--open-browser', action='store_true')
     args = parser.parse_args()
+    if args.home:
+        HOME = Path(args.home).resolve()
+        os.environ['CLASSTREAM_HOME'] = str(HOME)
+        RUNTIME = HOME / 'runtime'
+        PUBLIC = RUNTIME / 'student-setup'
+        CADDY = HOME / 'bin' / 'caddy.exe'
     cfg = configuration()
     if args.command == "stop":
         RUNTIME.mkdir(parents=True, exist_ok=True)
@@ -423,6 +446,8 @@ def main():
         password()
     elif args.command == 'open-teacher':
         webbrowser.open(cfg['teacher_url'])
+    elif args.command == 'launch':
+        launch(cfg, open_browser=args.open_browser)
     elif args.command == 'start':
         start(cfg, open_browser=args.open_browser)
     else:

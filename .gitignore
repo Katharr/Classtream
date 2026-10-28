@@ -60,3 +60,7 @@ windows-lan/config.json.tmp
 *.key
 *.pfx
 *.p12
+
+# Local development dependencies and generated verification artifacts
+.dev-deps/
+.artifacts/

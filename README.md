@@ -20,9 +20,9 @@
 
 学生打开课堂即可进入，由系统随机分配小浣熊、小熊猫等 20 种可爱动物昵称，不提供自定义或改名入口。同一课堂中刷新、重连和切换屏幕保持昵称，超过 20 人时添加数字后缀避免重名；服务重启后重新分配。课堂讨论默认开启并展开，教师可全体禁言或单独禁言学员；禁言期间仍可观看和阅读讨论，教师可继续发言。解除全体禁言保留单独禁言，新课堂恢复允许讨论。教师端按课堂管理、共享屏幕和共享权限组织，低频参数位于“更多设置”。升级后重启服务并刷新教师页和学生页。
 
-设计依据与验收范围见[中文界面设计方案](docs/中文界面设计方案.md)。
+课堂行为与使用说明见[课堂使用与快捷键](docs/课堂使用与快捷键.md)。
 
-教师端新增“冻结共享 / 解除冻结”和“快捷操作 /”，不提供暂停观看。按 `?` 或进入“更多设置 → 快捷键设置与帮助”查看、修改网页按键，管理 Windows 全局冻结/解除。默认登录并连接课堂后自动启用，在 PPT、IDE 或浏览器后台也可使用；`Ctrl+Alt+Shift+H` 冻结、`Ctrl+Alt+Shift+R` 解除冻结，占用时必须换键。启用偏好及按键会保存在本机，服务重启后重新登录连接课堂即可恢复；手动关闭也会记住。完整说明见[教师端快捷键设计方案](docs/教师端快捷键设计方案.md)。
+教师端新增“冻结共享 / 解除冻结”和“快捷操作 /”，不提供暂停观看。按 `?` 或进入“更多设置 → 快捷键设置与帮助”查看、修改网页按键，管理 Windows 全局冻结/解除。默认登录并连接课堂后自动启用，在 PPT、IDE 或浏览器后台也可使用；`Ctrl+Alt+Shift+H` 冻结、`Ctrl+Alt+Shift+R` 解除冻结，占用时必须换键。启用偏好及按键会保存在本机，服务重启后重新登录连接课堂即可恢复；手动关闭也会记住。完整说明见[课堂使用与快捷键](docs/课堂使用与快捷键.md)。
 
 ## 本版功能
 
@@ -46,6 +46,12 @@ HTTP 流量未加密，只用于可信教学局域网。学生知道固定网址
 
 ## 源码与复现
 
+### 本机开发：源码与运行数据分离
+
+本地维护工作区的布局及启动关系见 [目录结构与维护约定](docs/目录结构与维护约定.md)。`windows-lan/` 是教学适配层的唯一源码；旁边的 `teacher/` 只保存本机数据。工作区根目录只保留一个 `start.cmd` 日常入口，直接加载本仓库源码；先检查端口并清理本项目残留，再启动。关闭窗口停止，再次双击重启，修改后刷新页面。
+
+启动器支持环境变量 `CLASSTREAM_HOME`，用于指定 `config.json`、`.venv/`、`runtime/` 和 `bin/caddy.exe` 所在目录；未指定时维持原便携包布局。安装、网卡跟随、改密及防火墙设置均使用这个目录。前端资源和适配脚本始终从源码目录加载。
+
 上游源码保留在 `app/`。本次已验收的部署与适配代码位于 `windows-lan/`，其安装入口锁定安装 PyPI 的 Classtream 1.0.1 和依赖，再加载本仓库适配层，保持与已测试教学包一致。根目录 `.cmd` 是对应入口。原版 `classtream` CLI 的行为见上游说明。
 
 仅使用 Python 标准库即可生成轻量同事分享包：
@@ -59,12 +65,12 @@ python tools/build_windows_share.py
 开发验证（安装应用依赖后额外安装测试客户端；Node.js 仅用于开发测试，不是教学部署依赖）：
 
 ```powershell
-python -m pip install -r windows-lan/requirements-lock.txt httpx==0.28.1
-python tests/verify_windows_adapter.py
-python tests/verify_fast_capture.py
+python -m pip install -r windows-lan/requirements-lock.txt
+python -m pip install --target .dev-deps httpx2==2.16.0
+python tools/run_checks.py
 ```
 
-测试使用临时数据库。真实屏幕采集、另一台学生机、全班负载和完全空白 Windows 的系统级首装需按验收单检查。
+工具用途、浏览器测试和压力测试见 [维护工具](tools/README.md)。测试使用临时数据库。真实屏幕采集、另一台学生机、全班负载和完全空白 Windows 的系统级首装需按验收单检查。
 
 维护者制作离线依赖包：在 Windows x64 / Python 3.14 下用 `python -m pip wheel --wheel-dir wheels -r windows-lan/requirements-lock.txt pip==26.2.2` 准备 wheel，再将固定版本的 Python、VC++、Caddy 官方安装文件放入 installers 目录，运行 `python tools/build_offline_dependencies.py --wheels wheels --installers installers`。构建器校验固定哈希并生成逐文件 SHA-256 清单。离线二进制文件不提交 Git，按配套 ZIP 分发；安装器可用 `-DependenciesOnly` 只准备和检查依赖，供临时目录验证，不配置网络、防火墙、密码或启动服务。
 

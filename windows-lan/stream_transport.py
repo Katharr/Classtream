@@ -104,6 +104,7 @@ class Peer:
         self.controls = asyncio.Queue(maxsize=32)
         self.bytes_sent = self.frames_sent = self.coalesced = 0
         self.ack_ms = 0.0
+        self.pace_ms = self.send_ms = self.ack_wait_ms = 0.0
         self.last_seq = 0
         self.resync = False
         self.task = asyncio.create_task(self.run())
@@ -127,10 +128,12 @@ class Peer:
                 pass
         if terminal:
             self.stop()
-        async with self.lock:
-            if self.stopped and message.get('bytes') is not None:
-                return
-            await asyncio.wait_for(self.raw_send(message), SEND_TIMEOUT)
+        # Lock contention counts toward the send deadline as well.
+        async with asyncio.timeout(SEND_TIMEOUT):
+            async with self.lock:
+                if self.stopped and message.get('bytes') is not None:
+                    return
+                await self.raw_send(message)
 
     async def receive(self):
         while True:
@@ -157,6 +160,7 @@ class Peer:
         try:
             self.controls.put_nowait(data)
         except asyncio.QueueFull:
+            print(f'Stream monitor={self.monitor}: close reason=control_queue_full', flush=True)
             self.stop()
             asyncio.create_task(self.close())
 
@@ -172,36 +176,40 @@ class Peer:
                 await self.ws.send_text(await self.controls.get())
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
+            print(f'Stream monitor={self.monitor}: close reason=control_send '
+                  f'error={type(exc).__name__}', flush=True)
             self.stop()
             await self.close()
 
     async def run(self):
+        stage = 'idle'
+        started = sent = None
         try:
             while True:
                 await self.wake.wait()
                 self.wake.clear()
-                freeze_revision = self.manager.freeze_revision
-                snapshot = self.manager.snapshot_for(self)
-                if snapshot is None or self.stopped:
+                stage = 'pace'
+                waiting = time.monotonic()
+                prepared = await self.manager.paced_packet(self)
+                self.pace_ms = (time.monotonic() - waiting) * 1000
+                if prepared is None:
                     continue
-                if self.resync:
-                    self.epoch, self.versions, self.last_seq = 0, (), 0
-                    self.resync = False
-                if snapshot.seq == self.last_seq and snapshot.epoch == self.epoch:
-                    continue
-                payload = packet(snapshot, self.epoch, self.versions)
-                # Global byte pacing also bounds simultaneous keyframe bursts.
-                await self.manager.pace(len(payload))
-                # A freeze/restore can happen while this batch waits for bandwidth.
-                if self.manager.freeze_revision != freeze_revision:
-                    self.wake.set()
-                    continue
+                snapshot, payload = prepared
                 self.expected = (snapshot.epoch, snapshot.seq)
                 self.ack.clear()
                 started = time.monotonic()
-                await self.ws.send_bytes(payload)
-                await asyncio.wait_for(self.ack.wait(), ACK_TIMEOUT)
+                sent = None
+                self.send_ms = self.ack_wait_ms = 0.0
+                # One deadline covers sending and waiting for display confirmation.
+                async with asyncio.timeout(ACK_TIMEOUT):
+                    stage = 'send'
+                    await self.ws.send_bytes(payload)
+                    sent = time.monotonic()
+                    self.send_ms = (sent - started) * 1000
+                    stage = 'ack'
+                    await self.ack.wait()
+                self.ack_wait_ms = (time.monotonic() - sent) * 1000
                 self.ack_ms = (time.monotonic() - started) * 1000
                 self.bytes_sent += len(payload)
                 self.frames_sent += 1
@@ -210,9 +218,21 @@ class Peer:
                     self.versions = tuple(t[4] for t in snapshot.tiles)
                     self.last_seq = snapshot.seq
                 self.expected = None
+                stage = 'idle'
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:
+            now = time.monotonic()
+            if stage in ('send', 'ack') and started is not None:
+                self.ack_ms = (now - started) * 1000
+                if sent is None:
+                    self.send_ms = self.ack_ms
+                else:
+                    self.ack_wait_ms = (now - sent) * 1000
+            print(f'Stream monitor={self.monitor}: close reason={stage} '
+                  f'error={type(exc).__name__} seq={self.expected} '
+                  f'pace_ms={self.pace_ms:.1f} send_ms={self.send_ms:.1f} '
+                  f'ack_wait_ms={self.ack_wait_ms:.1f} batch_ms={self.ack_ms:.1f}', flush=True)
             self.stop()
             await self.close()
 
@@ -227,6 +247,7 @@ class StreamManager(ConnectionManager):
         self.frozen_frames = {}
         self.tasks = set()
         self.next_send = 0.0
+        self.pace_lock = asyncio.Lock()
         self.bytes_per_second = 8_000_000  # 64 Mbps total image budget
         self.student_nicknames = {}  # (classroom token, browser ID) -> assigned name
 
@@ -275,11 +296,25 @@ class StreamManager(ConnectionManager):
         for peer in self.peers.values():
             peer.wake.set()
 
-    async def pace(self, size):
-        now = time.monotonic()
-        due = max(now, self.next_send)
-        self.next_send = due + size / self.bytes_per_second
-        await asyncio.sleep(max(0, due - now))
+    async def pace(self):
+        await asyncio.sleep(max(0, self.next_send - time.monotonic()))
+
+    async def paced_packet(self, peer):
+        # Only the last granted batch occupies the budget. Waiting or cancelled
+        # viewers never reserve future slots, and the lock is released before I/O.
+        async with self.pace_lock:
+            await self.pace()
+            snapshot = self.snapshot_for(peer)
+            if snapshot is None or peer.stopped:
+                return None
+            if peer.resync:
+                peer.epoch, peer.versions, peer.last_seq = 0, (), 0
+                peer.resync = False
+            if snapshot.seq == peer.last_seq and snapshot.epoch == peer.epoch:
+                return None
+            payload = packet(snapshot, peer.epoch, peer.versions)
+            self.next_send = time.monotonic() + len(payload) / max(1, self.bytes_per_second)
+            return snapshot, payload
 
     async def connect(self, ws, monitor_id):
         if ws.query_params.get('stream') != '2':
@@ -327,4 +362,7 @@ class StreamManager(ConnectionManager):
         return dict(stream_protocol=2, stream_bytes=sum(p.bytes_sent for p in peers),
                     stream_batches=sum(p.frames_sent for p in peers),
                     coalesced_updates=sum(p.coalesced for p in peers),
-                    max_ack_ms=round(max((p.ack_ms for p in peers), default=0), 1))
+                    max_ack_ms=round(max((p.ack_ms for p in peers), default=0), 1),
+                    max_pace_ms=round(max((p.pace_ms for p in peers), default=0), 1),
+                    max_send_ms=round(max((p.send_ms for p in peers), default=0), 1),
+                    max_ack_wait_ms=round(max((p.ack_wait_ms for p in peers), default=0), 1))
