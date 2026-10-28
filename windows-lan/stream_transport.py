@@ -174,7 +174,8 @@ class Peer:
             while True:
                 await self.wake.wait()
                 self.wake.clear()
-                snapshot = self.manager.latest.get(self.monitor)
+                freeze_revision = self.manager.freeze_revision
+                snapshot = self.manager.snapshot_for(self)
                 if snapshot is None or self.stopped:
                     continue
                 if self.resync:
@@ -185,6 +186,10 @@ class Peer:
                 payload = packet(snapshot, self.epoch, self.versions)
                 # Global byte pacing also bounds simultaneous keyframe bursts.
                 await self.manager.pace(len(payload))
+                # A freeze/restore can happen while this batch waits for bandwidth.
+                if self.manager.freeze_revision != freeze_revision:
+                    self.wake.set()
+                    continue
                 self.expected = (snapshot.epoch, snapshot.seq)
                 self.ack.clear()
                 started = time.monotonic()
@@ -210,9 +215,35 @@ class StreamManager(ConnectionManager):
         super().__init__()
         self.peers = {}
         self.latest = {}
+        self.frozen = False
+        self.freeze_revision = 0
+        self.frozen_frames = {}
         self.tasks = set()
         self.next_send = 0.0
         self.bytes_per_second = 8_000_000  # 64 Mbps total image budget
+
+    def is_teacher(self, peer):
+        from app import state
+        token = peer.ws.query_params.get('admin_token')
+        return bool(token and token in state.admin_tokens)
+
+    def snapshot_for(self, peer):
+        if self.frozen and not self.is_teacher(peer):
+            # Existing viewers keep their own final frame. New viewers receive only
+            # the snapshot captured before freezing, never the live teacher preview.
+            if peer.last_seq:
+                return None
+            return self.frozen_frames.get(peer.monitor)
+        return self.latest.get(peer.monitor)
+
+    def set_frozen(self, enabled):
+        if self.frozen == enabled:
+            return
+        self.frozen = enabled
+        self.freeze_revision += 1
+        self.frozen_frames = dict(self.latest) if enabled else {}
+        for peer in self.peers.values():
+            peer.wake.set()
 
     async def pace(self, size):
         now = time.monotonic()
@@ -243,6 +274,7 @@ class StreamManager(ConnectionManager):
             peer.stop()
         await asyncio.gather(*list(self.tasks), return_exceptions=True)
         self.latest.clear()
+        self.frozen_frames.clear()
 
     def publish(self, monitor_id, snapshot):
         self.latest[monitor_id] = snapshot

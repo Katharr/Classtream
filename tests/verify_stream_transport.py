@@ -161,7 +161,69 @@ async def check_ack_timeout():
     print('PASS: explicit resync keyframe; missing ACK closes rather than accumulating data; sender tasks drained.')
 
 
+async def check_freeze():
+    from app import state
+    manager, store = StreamManager(), FrameStore()
+    frame = np.zeros((128, 128, 3), np.uint8)
+    student, teacher, late = Browser(), Browser(), Browser()
+    teacher.ws.scope['query_string'] = b'stream=2&admin_token=freeze-test'
+    receivers = []
+    with patch.dict(state.admin_tokens, {'freeze-test': True}):
+        for browser in (student, teacher):
+            await manager.connect(browser.ws, 1)
+            receivers.append(asyncio.create_task(browser.consume()))
+        initial = store.update(frame, 70, (0, 0, False))
+        manager.publish(1, initial)
+        await until(lambda: all(manager.peers[id(b.ws)].frames_sent == 1 for b in (student, teacher)))
+        manager.set_frozen(True)
+        frame[:] = 255
+        live = store.update(frame, 70, (0, 0, False))
+        manager.publish(1, live)
+        await until(lambda: manager.peers[id(teacher.ws)].last_seq == live.seq)
+        assert manager.peers[id(student.ws)].last_seq == initial.seq
+        await manager.connect(late.ws, 1)
+        receivers.append(asyncio.create_task(late.consume()))
+        await until(lambda: manager.peers[id(late.ws)].frames_sent == 1)
+        assert manager.peers[id(late.ws)].last_seq == initial.seq
+        manager.set_frozen(True)  # Idempotence must not replace the frozen snapshot.
+        assert manager.frozen_frames[1] is initial
+        manager.set_frozen(False)  # Resume even when no new capture is published.
+        await until(lambda: all(manager.peers[id(b.ws)].last_seq == live.seq for b in (student, late)))
+        assert not any(m['type'] == 'websocket.close' for b in (student, teacher, late) for m in b.outgoing)
+    for browser in (student, teacher, late):
+        manager.disconnect(browser.ws, 1)
+    for task in receivers:
+        task.cancel()
+    await asyncio.gather(*receivers, return_exceptions=True)
+    await manager.shutdown()
+    # Freeze while the next frame is queued for bandwidth: do not send that frame.
+    manager, student = StreamManager(), Browser()
+    await manager.connect(student.ws, 1)
+    receiver = asyncio.create_task(student.consume())
+    manager.publish(1, initial)
+    await until(lambda: manager.peers[id(student.ws)].frames_sent == 1)
+    entered, release = asyncio.Event(), asyncio.Event()
+    async def queued_pace(_):
+        entered.set()
+        await release.wait()
+    manager.pace = queued_pace
+    manager.publish(1, live)
+    await entered.wait()
+    manager.set_frozen(True)
+    release.set()
+    await asyncio.sleep(.05)
+    assert manager.peers[id(student.ws)].frames_sent == 1
+    manager.set_frozen(False)
+    await until(lambda: manager.peers[id(student.ws)].last_seq == live.seq)
+    manager.disconnect(student.ws, 1)
+    receiver.cancel()
+    await asyncio.gather(receiver, return_exceptions=True)
+    await manager.shutdown()
+    print('PASS: frozen final frame, live teacher preview, frozen late join, idempotence, static resume, and queued-frame freeze race without reconnect.')
+
+
 if __name__ == '__main__':
     check_rectangles()
     asyncio.run(check_peers())
     asyncio.run(check_ack_timeout())
+    asyncio.run(check_freeze())

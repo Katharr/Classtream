@@ -125,17 +125,17 @@ class TeacherShortcuts:
                     auto_enable=self.auto_enable,
                     supported=os.name == 'nt', bindings=self.bindings,
                     error=self.error or self.native.error, result=self.result,
-                    revision=self.revision, private_mode=state.private_mode)
+                    revision=self.revision, private_mode=state.private_mode, frozen=state.manager.frozen)
 
     async def configure(self, token, enabled, bindings=None):
         async with self.config_lock:
             if enabled:
                 proposed = bindings or self.bindings
                 if set(proposed) != {'hide', 'restore'}:
-                    raise ValueError('必须分别设置隐藏与恢复按键')
+                    raise ValueError('必须分别设置冻结与解除按键')
                 parsed = [parse_binding(v) for v in proposed.values()]
                 if parsed[0] == parsed[1]:
-                    raise ValueError('隐藏与恢复不能使用同一按键')
+                    raise ValueError('冻结与解除不能使用同一按键')
                 if not self.online(token):
                     raise ValueError('教师页面离线，请先恢复连接')
             if self.preferences_path:
@@ -188,8 +188,8 @@ class TeacherShortcuts:
         try:
             if not self.online(self.token):
                 raise ValueError('教师登录失效或页面离线，请先恢复连接')
-            await self.set_private(self.token, command == 'hide', require_online=True)
-            self.result = '学生画面已隐藏' if command == 'hide' else '已恢复共享（保留原屏幕权限）'
+            await self.set_frozen(self.token, command == 'hide', require_online=True)
+            self.result = '学生画面已冻结' if command == 'hide' else '已解除冻结，学生画面自动继续'
         except Exception as exc:
             self.result = str(exc)
         self.revision += 1
@@ -197,6 +197,18 @@ class TeacherShortcuts:
         task = asyncio.create_task(asyncio.to_thread(notify, self.result))
         self.feedback.add(task)
         task.add_done_callback(self.feedback.discard)
+
+    async def set_frozen(self, token, enabled, require_online=False):
+        from app import state, database
+        async with self.lock:
+            if token not in state.admin_tokens:
+                raise PermissionError('教师登录已失效，请重新登录')
+            if require_online and not self.online(token):
+                raise ValueError('教师页面离线，请先恢复连接')
+            if require_online and not database.get_active_session():
+                raise ValueError('请先创建课堂')
+            state.manager.set_frozen(enabled)
+            return dict(ok=True, frozen=state.manager.frozen)
 
     async def set_private(self, token, enabled, require_online=False):
         from app import state, database

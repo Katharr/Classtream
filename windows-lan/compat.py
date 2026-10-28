@@ -133,7 +133,23 @@ def create_application(public_url, fps=30, teacher_url=None):
         except OSError:
             return JSONResponse({'ok': False, 'error': '无法保存本机快捷键配置，请检查目录写入权限'}, status_code=500)
 
-    # Route both the existing checkbox and native hotkeys through one serialized action.
+    # Freeze delivery without closing student sockets or changing screen permissions.
+    @application.post('/api/screen/freeze')
+    async def change_shared_freeze(request: Request):
+        from fastapi.responses import JSONResponse
+        token = request.headers.get('x-admin-token', '')
+        if token not in state.admin_tokens:
+            return JSONResponse({'ok': False}, status_code=401)
+        try:
+            data = await request.json()
+            if not isinstance(data, dict) or type(data.get('enabled')) is not bool:
+                raise ValueError('状态必须为布尔值')
+            return JSONResponse(await shortcuts.set_frozen(token, data['enabled']))
+        except (ValueError, TypeError):
+            return JSONResponse({'ok': False}, status_code=400)
+        except PermissionError:
+            return JSONResponse({'ok': False}, status_code=401)
+    # Retain the original screen privacy API independently of freezing.
     @application.post('/api/screen/private')
     async def change_shared_visibility(request: Request):
         from fastapi.responses import JSONResponse
@@ -143,7 +159,7 @@ def create_application(public_url, fps=30, teacher_url=None):
         try:
             data = await request.json()
             if not isinstance(data, dict) or type(data.get('enabled')) is not bool:
-                raise ValueError('隐藏状态必须为布尔值')
+                raise ValueError('状态必须为布尔值')
             return JSONResponse(await shortcuts.set_private(token, data['enabled']))
         except (ValueError, TypeError):
             return JSONResponse({'ok': False}, status_code=400)

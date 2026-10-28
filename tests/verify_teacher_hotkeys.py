@@ -108,14 +108,17 @@ with tempfile.TemporaryDirectory() as temporary, patch('teacher_hotkeys.notify')
                 restored = TeacherShortcuts(service.preferences_path)
                 assert restored.auto_enable and restored.bindings == bindings
                 post_hotkey(service.native, 1)
-                eventually(lambda: client.get('/api/teacher-shortcuts', headers=headers).json()['private_mode'])
+                eventually(lambda: client.get('/api/teacher-shortcuts', headers=headers).json()['frozen'])
                 with client.websocket_connect('/ws/1?stream=2&session_id=allowed-student&join=' + session) as student:
-                    assert student.receive_json()['type'] == 'private'
+                    student.send_json({'type':'register','session_id':'allowed-student','name':'Frozen student'})
+                    while student.receive_json()['type'] != 'chat:history':
+                        pass
+                    assert state.manager.frozen and not state.private_mode
                 post_hotkey(service.native, 2)
-                eventually(lambda: not client.get('/api/teacher-shortcuts', headers=headers).json()['private_mode'])
+                eventually(lambda: not client.get('/api/teacher-shortcuts', headers=headers).json()['frozen'])
             else:
-                assert client.post('/api/screen/private', headers=headers, json={'enabled': True}).json()['private_mode']
-                assert not client.post('/api/screen/private', headers=headers, json={'enabled': False}).json()['private_mode']
+                assert client.post('/api/screen/freeze', headers=headers, json={'enabled': True}).json()['frozen']
+                assert not client.post('/api/screen/freeze', headers=headers, json={'enabled': False}).json()['frozen']
             assert state.screen_permissions[1] == {'allowed-student'}
             with client.websocket_connect('/ws/1?stream=2&session_id=other-student&join=' + session) as student:
                 assert student.receive_json()['reason'] == 'restricted'
@@ -124,16 +127,16 @@ with tempfile.TemporaryDirectory() as temporary, patch('teacher_hotkeys.notify')
                 while student.receive_json()['type'] != 'chat:history':
                     pass
         if os.name == 'nt':
-            before = state.private_mode
+            before = state.manager.frozen
             post_hotkey(service.native, 1)
             eventually(lambda: service.revision >= 3)
-            assert state.private_mode == before and '离线' in service.result
+            assert state.manager.frozen == before and '离线' in service.result
         client.post('/api/admin/logout', headers=headers)
         eventually(lambda: not service.native.thread or not service.native.thread.is_alive())
-        assert client.post('/api/screen/private', headers=headers, json={'enabled': True}).status_code == 401
+        assert client.post('/api/screen/freeze', headers=headers, json={'enabled': True}).status_code == 401
         new_token = client.post('/api/admin/login', json={
             'username': 'shortcut-test', 'password': 'isolated-test-password'}).json()['token']
         client.post('/api/teacher-shortcuts', headers={'X-Admin-Token': new_token}, json={'enabled': False})
         assert not TeacherShortcuts(service.preferences_path).auto_enable
     gc.collect()
-print('PASS: native conflict/cleanup/message delivery, local-only auth, offline/logout rejection, hide/restore, original per-screen permissions and credential-free preference persistence. Desktop key injection is not part of this test.')
+print('PASS: native conflict/cleanup/message delivery, local-only auth, offline/logout rejection, freeze/resume, original per-screen permissions and credential-free preference persistence. Desktop key injection is not part of this test.')

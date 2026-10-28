@@ -57,7 +57,7 @@ const stageStatus = document.getElementById('stage-status');
 const live = document.getElementById('live-badge');
 function updateStatus() {
   const connected = conn.textContent.includes('已连接');
-  const text = teacher && state.privateMode ? '学生画面已隐藏' : state.paused ? '画面已暂停 · 可继续观看' : connected ? '正在共享' : '正在连接';
+  const text = teacher && state.sharingFrozen ? '学生画面已冻结' : state.paused ? '画面已暂停 · 可继续观看' : connected ? '正在共享' : '正在连接';
   stageStatus.textContent = text;
   live.textContent = connected ? '● 课堂进行中' : '● 连接中';
   live.style.color = connected ? 'var(--green)' : 'var(--text-dim)';

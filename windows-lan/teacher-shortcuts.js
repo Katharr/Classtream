@@ -2,7 +2,7 @@ import { state } from '/static/js/state.js';
 import { toggleSidebar, toggleFullscreen, takeScreenshot, zoomIn, zoomOut, zoomReset } from '/static/js/controls.js';
 import { toggleChat } from '/static/js/chat.js';
 import { selectMonitor, selectAllGrid } from '/static/js/stream.js';
-import { getPermissions, setPrivateMode, updateSettings, newSession } from '/static/js/api.js';
+import { updateSettings, newSession } from '/static/js/api.js';
 import { copyText } from '/static/js/browser-compat.js';
 
 const $ = id => document.getElementById(id);
@@ -26,7 +26,7 @@ try {
   }
 } catch { /* A blocked or damaged preference store must not prevent class use. */ }
 let commands=[], selected=0, filtered=[], returnFocus=null, record=null;
-let server=null, revision=null, polling=false, busy=false, requestedPrivacy=null, toastTimer;
+let server=null, revision=null, polling=false, busy=false, requestedFreeze=null, toastTimer;
 let autoAttemptedToken=null;
 const authenticated = () => state.myRole==='host' && !!state.myAdminToken;
 const modal = () => [...document.querySelectorAll('.modal-backdrop:not(.hidden)')].at(-1);
@@ -62,27 +62,28 @@ function closeDialog(id, restore=true) {
   $(id).classList.add('hidden'); record=null;
   if(restore && returnFocus?.isConnected)returnFocus.focus();
 }
-function syncVisibility(hidden) {
-  state.privateMode=hidden; $('private-mode-cb').checked=hidden;
+function syncFreeze(hidden) {
+  state.sharingFrozen=hidden;
   $('teacher-privacy-banner').hidden=!hidden;
-  $('teacher-hide-btn').textContent=hidden?'恢复共享':'隐藏共享';
+  $('teacher-hide-btn').textContent=hidden?'解除冻结':'冻结共享';
   $('teacher-hide-btn').setAttribute('aria-pressed',String(hidden));
   window.dispatchEvent(new Event('classtream:sharing-status'));
 }
-async function privacy(hidden) {
-  requestedPrivacy=hidden;
+async function freeze(hidden) {
+  requestedFreeze=hidden;
   if(busy)return;
   busy=true;
-  try { while(requestedPrivacy!==null){
-      const target=requestedPrivacy;requestedPrivacy=null;
-      const result=await setPrivateMode(target);
-      if(!result.ok)throw new Error('共享状态修改失败，请检查登录和网络');
-      syncVisibility(result.private_mode);
-      toast(target?'学生画面已隐藏':'已恢复共享（保留原屏幕权限）');
+  try { while(requestedFreeze!==null){
+      const target=requestedFreeze;requestedFreeze=null;
+      const response=await fetch('/api/screen/freeze',{method:'POST',headers:{'X-Admin-Token':state.myAdminToken,'Content-Type':'application/json'},body:JSON.stringify({enabled:target})});
+      const result=await response.json();
+      if(!result.ok)throw new Error('冻结状态修改失败，请检查登录和网络');
+      syncFreeze(result.frozen);
+      toast(target?'学生画面已冻结':'已解除冻结，学生画面自动继续');
     }
   } catch(e) {
-    requestedPrivacy=null;
-    try {const actual=await getPermissions();if(actual.ok)syncVisibility(actual.private_mode);} catch { /* Polling retries. */ }
+    requestedFreeze=null;
+    try {const actual=await api();if(actual.ok)syncFreeze(actual.frozen);} catch { /* Polling retries. */ }
     throw e;
   } finally {busy=false;}
 }
@@ -96,10 +97,10 @@ async function api(method='GET',data) {
 }
 function renderServer(result, force=false) {
   const updateToggle=!server || force || $('teacher-settings-dialog').classList.contains('hidden');
-  server=result; syncVisibility(result.private_mode);
+  server=result; syncFreeze(result.frozen);
   if(updateToggle)$('teacher-global-enabled').checked=result.enabled;
   $('teacher-global-state').textContent=result.error || (!result.supported?'此系统不支持 Windows 全局快捷键':
-    result.enabled?(result.online?'全局快捷键已启用，网页后台也可隐藏/恢复':'全局快捷键已注册，教师页面离线'):'全局快捷键未启用');
+    result.enabled?(result.online?'全局快捷键已启用，网页后台也可冻结/解除':'全局快捷键已注册，教师页面离线'):'全局快捷键未启用');
   $('teacher-global-enabled').disabled=!result.supported;
   if(revision!==null && result.revision!==revision && result.result)toast(result.result,!result.online);
   revision=result.revision;
@@ -112,7 +113,7 @@ async function poll() {
     if(result.supported && result.auto_enable && result.ready && !result.enabled && autoAttemptedToken!==state.myAdminToken){
       autoAttemptedToken=state.myAdminToken;
       result=await api('POST',{enabled:true,bindings:result.bindings});
-      toast('后台隐藏/恢复快捷键已自动启用');
+      toast('后台冻结/解除快捷键已自动启用');
     }
     renderServer(result);
   }
@@ -176,11 +177,11 @@ export function initTeacherShortcuts() {
   document.querySelectorAll('.shortcut-row').forEach(row=>{if(row.textContent.includes('暂停'))row.remove();});
   state.paused=false;
   const toolbar=document.createElement('div'); toolbar.id='teacher-actions';
-  toolbar.innerHTML='<button id="teacher-hide-btn" class="btn" aria-pressed="false">隐藏共享</button><button id="teacher-command-btn" class="btn">快捷操作 /</button><button id="teacher-help-btn" class="btn" aria-label="快捷键帮助">?</button>';
+  toolbar.innerHTML='<button id="teacher-hide-btn" class="btn" aria-pressed="false">冻结共享</button><button id="teacher-command-btn" class="btn">快捷操作 /</button><button id="teacher-help-btn" class="btn" aria-label="快捷键帮助">?</button>';
   $('bottombar').prepend(toolbar);
   const ui=document.createElement('div');ui.id='teacher-shortcut-ui';
   ui.innerHTML=`
-    <div id="teacher-privacy-banner" role="status" hidden>学生画面已隐藏 · 教师预览仍可继续</div>
+    <div id="teacher-privacy-banner" role="status" hidden>学生画面已冻结 · 学生停留在最后一帧 · 教师预览仍可继续</div>
     <div id="teacher-toast" role="status" aria-live="polite" hidden></div>
     <div id="teacher-command-dialog" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="快捷操作">
       <div class="modal-box teacher-dialog"><div class="teacher-dialog-heading"><h2>快捷操作</h2><button data-close="teacher-command-dialog">关闭 Esc</button></div>
@@ -189,10 +190,10 @@ export function initTeacherShortcuts() {
     </div>
     <div id="teacher-settings-dialog" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="快捷键设置与帮助">
       <div class="modal-box teacher-dialog"><div class="teacher-dialog-heading"><h2>快捷键设置与帮助</h2><button data-close="teacher-settings-dialog">关闭 Esc</button></div>
-      <h3>Windows 全局快捷键</h3><p>网页在后台、最小化或正在使用 PPT 时也能隐藏/恢复。保持教师登录、管理页连接与服务运行。</p>
+      <h3>Windows 全局快捷键</h3><p>网页在后台、最小化或正在使用 PPT 时也能冻结/解除。保持教师登录、管理页连接与服务运行。</p>
       <p id="teacher-global-state" role="status">正在检查全局快捷键…</p>
-      <label>隐藏共享 <input id="teacher-global-hide" aria-label="全局隐藏共享按键" value="Ctrl+Alt+Shift+H"></label>
-      <label>恢复共享 <input id="teacher-global-restore" aria-label="全局恢复共享按键" value="Ctrl+Alt+Shift+R"></label>
+      <label>冻结共享 <input id="teacher-global-hide" aria-label="全局冻结共享按键" value="Ctrl+Alt+Shift+H"></label>
+      <label>解除冻结 <input id="teacher-global-restore" aria-label="全局解除冻结按键" value="Ctrl+Alt+Shift+R"></label>
       <p>登录并连接课堂后自动启用；手动关闭会记住设置，重新启用仍需点击应用。</p>
       <label><input id="teacher-global-enabled" type="checkbox">启用全局快捷键</label><button id="teacher-global-save">应用全局设置</button>
       <h3>教师网页快捷键</h3><p id="teacher-web-state">网页按键仅在此页面获得焦点且未输入文字时生效。教师端不提供暂停观看。</p>
@@ -211,7 +212,7 @@ export function initTeacherShortcuts() {
   document.querySelector('.advanced-settings').append(configButton);
   const add=(id,label,search,action,extra={})=>commands.push({id,label,search,action,...extra});
   add('palette','打开快捷操作','kjcz',palette); add('help','快捷键设置与帮助','kjj sz bz',settings);
-  add('hide','隐藏全部共享','yc gx',()=>privacy(true));add('restore','恢复共享（保留原权限）','hf gx',()=>privacy(false));
+  add('hide','冻结共享','dj gx',()=>freeze(true));add('restore','解除冻结（自动继续共享）','hf gx',()=>freeze(false));
   add('link','复制上课地址','fz sk dz',async()=>{
     const status=await fetch('/api/status').then(r=>r.json());if(!status.session_token)throw new Error('请先创建课堂');
     const info=await fetch('/lan-info').then(r=>r.json());await copyText(info.student_url);toast('已复制上课地址');
@@ -244,7 +245,7 @@ export function initTeacherShortcuts() {
     'teacher-command-btn':'palette','teacher-help-btn':'help','teacher-settings-btn':'help',
     'new-session-btn':'create','copy-current-btn':'link','btn-fullscreen':'fullscreen',
     'btn-screenshot':'screenshot','btn-zoom-in':'zoomIn','btn-zoom-out':'zoomOut','btn-zoom-reset':'zoomReset'})){
-    $(id)?.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();hideTooltip();run(commands.find(c=>c.id===(id==='teacher-hide-btn' && state.privateMode?'restore':command)));},true);
+    $(id)?.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();hideTooltip();run(commands.find(c=>c.id===(id==='teacher-hide-btn' && state.sharingFrozen?'restore':command)));},true);
     if($(id))$(id).dataset.shortcutCommand=command;
   }
   for(const [id,command] of Object.entries({'sidebar-toggle-btn':'sidebar','chat-toggle-btn':'chat',
@@ -256,7 +257,7 @@ export function initTeacherShortcuts() {
   let tooltipButton=null;
   const hideTooltip=()=>{tooltip.hidden=true;tooltipButton?.removeAttribute('aria-describedby');tooltipButton=null;};
   const showTooltip=button=>{
-    const id=button.id==='teacher-hide-btn'?(state.privateMode?'restore':'hide'):button.dataset.shortcutCommand;
+    const id=button.id==='teacher-hide-btn'?(state.sharingFrozen?'restore':'hide'):button.dataset.shortcutCommand;
     const command=commands.find(c=>c.id===id);if(!command)return;
     hideTooltip();tooltipButton=button;
     const key=preferences.enabled?(preferences.keys[id]||'未绑定'):'已关闭';
@@ -280,7 +281,6 @@ export function initTeacherShortcuts() {
   window.addEventListener('resize',hideTooltip);
   document.addEventListener('scroll',hideTooltip,true);
   document.addEventListener('keydown',hideTooltip,true);
-  $('private-mode-cb').addEventListener('change',e=>{e.stopImmediatePropagation();run(commands.find(c=>c.id===(e.target.checked?'hide':'restore')));},true);
   ui.querySelectorAll('[data-close]').forEach(el=>el.onclick=()=>closeDialog(el.dataset.close));
   $('teacher-command-search').oninput=()=>{selected=0;renderResults();};
   $('teacher-web-enabled').onchange=e=>{preferences.enabled=e.target.checked;save();};
@@ -338,7 +338,7 @@ export function initTeacherShortcuts() {
   document.addEventListener('pystream:admin-ready',poll);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll();});
   window.addEventListener('focus',()=>{poll();$('teacher-web-state').textContent='网页按键可用；输入文字、操作控件或打开弹窗时暂停响应。';});
-  window.addEventListener('blur',()=>{$('teacher-web-state').textContent='网页快捷键暂不可用；已启用的全局隐藏/恢复仍可使用。';});
+  window.addEventListener('blur',()=>{$('teacher-web-state').textContent='网页快捷键暂不可用；已启用的全局冻结/解除仍可使用。';});
   setInterval(poll,2000);poll();
   // Preserve clipboard-modal focus after it closes through its existing button.
   $('close-link-modal').addEventListener('click',()=>{if(returnFocus?.isConnected)returnFocus.focus();});
