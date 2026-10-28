@@ -183,6 +183,17 @@ def create_application(public_url, fps=30, teacher_url=None):
             '<div class="shortcut-row"><span>Push to Talk (hold)</span><kbd>V</kbd></div>',
             '', 'HTTP voice shortcut')
 
+    from classroom_ui import render_template, localize_script
+    template = render_template(template)
+    scripts = {name: localize_script(name, source) for name, source in scripts.items()}
+
+    @application.get('/classroom-ui/{name}')
+    async def classroom_asset(name: str):
+        from fastapi.responses import FileResponse
+        if name not in ('classroom.css', 'classroom.js', 'classroom-errors.js'):
+            return Response(status_code=404)
+        return FileResponse(Path(__file__).parent / name, headers=no_cache)
+
     @application.get('/', response_class=HTMLResponse)
     async def index():
         return HTMLResponse(template, headers=no_cache)
