@@ -347,7 +347,7 @@ def create_application(public_url, fps=30, teacher_url=None):
     @application.get('/classroom-ui/{name}')
     async def classroom_asset(name: str):
         from fastapi.responses import FileResponse
-        if name not in ('classroom.css', 'classroom.js', 'classroom-errors.js', 'teacher-shortcuts.js', 'discussion.js'):
+        if name not in ('classroom.css', 'classroom.js', 'classroom-errors.js', 'teacher-shortcuts.js', 'discussion.js', 'screen-pan.js'):
             return Response(status_code=404)
         return FileResponse(Path(__file__).parent / name, headers=no_cache)
 

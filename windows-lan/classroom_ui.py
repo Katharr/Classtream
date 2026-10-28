@@ -125,7 +125,7 @@ def render_template(template):
     template = re.sub(r'(<button class="btn" id="btn-pause".*?</button>)',
                       lambda m: m[1] + '\n' + fullscreen, template, count=1, flags=re.S)
     template = _swap(template, '<script type="module" src="/static/js/main.js"></script>',
-                     '<script type="module" src="/static/js/main.js"></script>\n<script type="module" src="/classroom-ui/classroom.js"></script>')
+                     '<script type="module" src="/static/js/main.js"></script>\n<script type="module" src="/classroom-ui/classroom.js"></script>\n<script type="module" src="/classroom-ui/screen-pan.js"></script>')
     return template
 
 
