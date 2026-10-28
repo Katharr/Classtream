@@ -20,9 +20,6 @@ TEXT = {
     'Retry Connection': '重新连接', '👑 Admin Login': '教师登录',
     'Username': '教师账号', 'Password': '密码', 'Enter password…': '请输入教师密码',
     'Login as Admin': '进入教师工作台',
-    'Enter your name to join the live session.': '准备好了吗？输入姓名，开始上课。',
-    'Your name': '你的姓名', 'Enter your name…': '例如：张小明',
-    'Join Session': '进入课堂', 'Your name will be visible to all viewers.': '姓名用于课堂交流，同学和老师都可以看到。',
     '🔗 New Session Created': '课堂已创建', 'Share this link with your students:': '把下方地址发给学生，即可加入课堂。',
     'Copy Link': '复制上课地址', 'Close': '关闭', 'Loading…': '正在准备课堂…',
     'Toggle sidebar (B)': '课堂面板（B）', 'Toggle chat (C)': '课堂讨论（C）',
@@ -69,6 +66,7 @@ def _swap(source, old, new):
 def render_template(template):
     """Retain upstream IDs and behavior, regroup controls around classroom tasks."""
     template = template.replace('lang="en"', 'lang="zh-CN"')
+    template = re.sub(r'<div id="name-modal".*?(?=<!-- ═)', '', template, flags=re.S)
     # Run after the transport adapter has replaced the image with a canvas.
     template = re.sub(r'>([^<>]+)<', lambda m: '>' + (
         m[1].replace(m[1].strip(), TEXT[m[1].strip()]) if m[1].strip() in TEXT else m[1]) + '<', template)
@@ -119,7 +117,7 @@ def render_template(template):
         template = re.sub(pattern, lambda m: m[1] + f'<button class="rejoin-btn" onclick="location.href=\'/class\'">{label}</button>', template, count=1, flags=re.S)
     template = _swap(template, '    <span id="chat-unread-badge">', '    <span>课堂讨论</span><span id="chat-unread-badge">')
     template = _swap(template, '  <div id="logo">', '  <div id="logo" aria-label="云课堂">')
-    template = _swap(template, '  <div class="badge" id="live-badge">', '  <button id="identity-btn" class="identity-btn" title="修改姓名">我的姓名</button>\n  <div class="badge" id="live-badge">')
+    template = _swap(template, '  <div class="badge" id="live-badge">', '  <button id="identity-btn" class="identity-btn" title="课堂昵称">课堂昵称</button>\n  <div class="badge" id="live-badge">')
     template = template.replace('<span id="viewer-count">0</span>', '<span id="viewer-count">0</span><span>人在线</span>')
     template = template.replace('id="conn-state" style="color:var(--green)">● 已连接', 'id="conn-state" style="color:var(--text-dim)">● 正在连接')
     fullscreen = re.search(r'  <button class="btn" id="btn-fullscreen".*?</button>', template, re.S)[0]
@@ -168,9 +166,6 @@ def localize_script(name, source):
         source = "import { explainError } from '/classroom-ui/classroom-errors.js';\n" + source
         source = source.replace("d.reason || '密码不正确，请重新输入'", "explainError(d.reason, '密码不正确，请重新输入')")
         source = source.replace("data?.reason || '文件发送失败，请重试'", "explainError(data?.reason, '文件发送失败，请重试')")
-    if name == 'auth.js':
-        source = source.replace("  localStorage.setItem('pystream_name', name);",
-                                "  localStorage.setItem('pystream_name', name);\n  document.dispatchEvent(new Event('classtream:name-changed'));")
     if name == 'controls.js':
         source = source.replace("    if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;",
                                 "    if (e.ctrlKey || e.metaKey || e.altKey || e.target.isContentEditable ||\n        ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'SUMMARY'].includes(e.target.tagName)) return;")

@@ -15,6 +15,13 @@ import cv2
 import numpy as np
 from app.manager import ConnectionManager
 
+STUDENT_NICKNAMES = (
+    '小浣熊', '小熊猫', '小兔子', '小松鼠', '小刺猬',
+    '小狐狸', '小考拉', '小海獭', '小企鹅', '小海豹',
+    '小鹿', '小羊羔', '小奶猫', '小柴犬', '小仓鼠',
+    '小龙猫', '小水豚', '小树懒', '小鸭子', '小雪貂',
+)
+
 MAGIC = b'CS2\0'
 TILE = 128
 SEND_TIMEOUT = 2.0
@@ -221,6 +228,29 @@ class StreamManager(ConnectionManager):
         self.tasks = set()
         self.next_send = 0.0
         self.bytes_per_second = 8_000_000  # 64 Mbps total image budget
+        self.student_nicknames = {}  # (classroom token, browser ID) -> assigned name
+
+    def register_viewer(self, ws, session_id, name, role='guest'):
+        if role != 'host':
+            import secrets
+            token = ws.query_params.get('join', '')
+            key = (token, session_id)
+            if key not in self.student_nicknames:
+                used = {value for (room, _), value in self.student_nicknames.items() if room == token}
+                suffix = 1
+                while True:
+                    available = [animal + (str(suffix) if suffix > 1 else '')
+                                 for animal in STUDENT_NICKNAMES
+                                 if animal + (str(suffix) if suffix > 1 else '') not in used]
+                    if available:
+                        self.student_nicknames[key] = secrets.choice(available)
+                        break
+                    suffix += 1
+            name = self.student_nicknames[key]
+            peer = self.peers.get(id(ws))
+            if peer:
+                peer.enqueue_control(json.dumps({'type': 'identity', 'name': name}))
+        super().register_viewer(ws, session_id, name, role)
 
     def is_teacher(self, peer):
         from app import state

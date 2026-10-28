@@ -181,6 +181,31 @@ def create_application(public_url, fps=30, teacher_url=None):
     scripts = {}
     for name in ("config", "stream", "voice", "main", "sidebar", "chat", "controls", "auth", "viewers"):
         scripts[name + ".js"] = (STATIC_DIR / "js" / (name + ".js")).read_text("utf-8")
+    # Students register immediately; only the server chooses their classroom name.
+    scripts['auth.js'] = re.sub(
+        r'/\*\* Show name modal.*?(?=// ── Full-page overlays)', '', scripts['auth.js'], flags=re.S)
+    scripts['auth.js'] = scripts['auth.js'].replace("import { reRegisterAll }           from './stream.js';", '')
+    scripts['auth.js'] = replace_once(scripts['auth.js'],
+        'export async function initStudentFlow() {',
+        "export async function initStudentFlow() {\n  state.myName = '';", 'clear legacy student name')
+    scripts['main.js'] = replace_once(scripts['main.js'],
+        'showNoSessionOverlay, showNameModal, submitName, submitAdminLogin,',
+        'showNoSessionOverlay, submitAdminLogin,', 'student auth imports')
+    scripts['main.js'] = replace_once(scripts['main.js'],
+        "    if (state.myName) {\n      reRegisterAll();          // name already known → register immediately\n"
+        "    } else {\n      showNameModal();          // first visit → ask for name\n    }",
+        '    reRegisterAll();', 'automatic student registration')
+    scripts['main.js'] = replace_once(scripts['main.js'],
+        "  _on('name-submit-btn',    () => submitName());", '', 'remove name submit')
+    scripts['stream.js'] = replace_once(scripts['stream.js'],
+        'if (!ws || ws.readyState !== WebSocket.OPEN || !state.myName) return;',
+        'if (!ws || ws.readyState !== WebSocket.OPEN) return;', 'nameless student registration')
+    scripts['viewers.js'] = replace_once(scripts['viewers.js'],
+        '  switch (data.type) {',
+        "  switch (data.type) {\n    case 'identity':\n"
+        "      if (state.myRole !== 'host') {\n        state.myName = data.name;\n"
+        "        document.dispatchEvent(new Event('classtream:name-changed'));\n      }\n      return;",
+        'server assigned identity')
     scripts['stream-client.js'] = (Path(__file__).parent / 'stream-client.js').read_text('utf-8')
     scripts['stream.js'] = "import { createFrameReceiver } from './stream-client.js';\n" + scripts['stream.js']
     scripts['stream.js'] = replace_once(scripts['stream.js'],
