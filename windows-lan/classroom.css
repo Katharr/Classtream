@@ -145,18 +145,46 @@ button:disabled {opacity:.45;cursor:not-allowed}
 }
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
-/* Single-teacher sharing controls and shortcut hints. */
+/* Discussion: compact status row and an on-demand member drawer. */
 #discussion-controls {padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;flex-shrink:0}
-#discussion-teacher-controls {margin-top:8px}
-#discussion-controls button {padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);cursor:pointer;white-space:nowrap}
-#discussion-controls button[aria-pressed=true] {background:#fff1db;color:#7b4300;border-color:#edc48a}
-#discussion-member-settings {margin-top:8px}
-#discussion-member-settings summary {cursor:pointer}
-#discussion-member-settings p {margin:6px 0;color:var(--text-muted)}
-#discussion-member-list {max-height:180px;overflow-y:auto}
-.discussion-member {display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0}
-.discussion-member span {min-width:0;overflow-wrap:anywhere}
-#discussion-error {color:var(--red)}
-#discussion-controls [hidden] {display:none!important}
+#discussion-teacher-controls {flex-shrink:0}
+#discussion-mute-all {display:flex;align-items:center;gap:8px;padding:6px 0;border:0;background:transparent;color:var(--text-dim);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
+.discussion-switch {position:relative;width:30px;height:18px;border-radius:12px;background:#8592a4;transition:background .15s}
+.discussion-switch:after {content:"";position:absolute;left:3px;top:3px;width:12px;height:12px;border-radius:50%;background:white;transition:transform .15s}
+#discussion-mute-all[aria-checked=true] .discussion-switch {background:#b66a12}
+#discussion-mute-all[aria-checked=true] .discussion-switch:after {transform:translateX(12px)}
+#discussion-mute-all:disabled,#discussion-member-list button:disabled {opacity:.55;cursor:wait}
+.discussion-status-row {display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:28px}
+#discussion-status {color:var(--text-dim);line-height:1.6}
+#discussion-status:before {content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#388568;margin-right:7px;vertical-align:middle}
+.is-muted #discussion-status {color:#94530c}
+.is-muted #discussion-status:before {background:#b66a12}
+#discussion-member-open {border:0;background:transparent;padding:5px 0 5px 8px;color:var(--text-dim);font:inherit;cursor:pointer;white-space:nowrap}
+#discussion-member-open span {margin-left:4px}
+#discussion-member-settings {position:fixed;inset:0 0 0 auto;margin:0;width:min(380px,100vw);max-width:100vw;height:100dvh;max-height:100dvh;box-sizing:border-box;padding:24px 20px;border:0;border-left:1px solid var(--border);background:#fff;color:var(--text);box-shadow:-12px 0 40px #23374a22;font-size:13px}
+#discussion-member-settings[open] {display:flex;flex-direction:column;gap:16px}
+#discussion-member-settings::backdrop {background:#172b4d33}
+.discussion-drawer-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0}
+.discussion-drawer-heading h2 {margin:0;font-size:17px;font-weight:600}
+#discussion-member-settings button {font:inherit;cursor:pointer}
+#discussion-member-close {border:0;background:transparent;color:var(--text-dim);width:36px;height:36px;font-size:24px!important;border-radius:6px}
+#discussion-member-rule {margin:0;padding:10px 12px;background:#fff6e9;color:#94530c;font-size:12px;line-height:1.7;border-radius:8px}
+#discussion-member-search {width:100%;box-sizing:border-box;min-height:40px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-bg);color:var(--text);font:inherit;flex-shrink:0}
+.discussion-filters {display:flex;gap:6px;flex-shrink:0}
+.discussion-filters button {padding:6px 12px;border:1px solid transparent;background:transparent;color:var(--text-dim);border-radius:6px}
+.discussion-filters button[aria-pressed=true] {background:var(--panel-bg);border-color:var(--border);color:var(--text)}
+.discussion-list-heading {display:flex;justify-content:space-between;color:var(--text-muted);font-size:12px;padding-bottom:8px;border-bottom:1px solid var(--border);flex-shrink:0}
+#discussion-member-list {overflow-y:auto;min-height:0;flex:1}
+.discussion-member {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.discussion-member-name {min-width:0;overflow-wrap:anywhere}
+.discussion-member-actions {display:flex;align-items:center;gap:8px;flex-shrink:0}
+.discussion-muted-badge {font-size:11px;color:#94530c}
+#discussion-member-list button {padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text-dim);white-space:nowrap;min-height:34px}
+.discussion-empty {text-align:center;color:var(--text-muted);padding:24px 0}
+#discussion-error {color:var(--red);line-height:1.6}
+#discussion-feedback {color:var(--text-dim);line-height:1.6}
+#discussion-error:empty,#discussion-feedback:empty {display:none}
+#discussion-controls [hidden],#discussion-teacher-controls[hidden] {display:none!important}
+#discussion-mute-all:focus-visible,#discussion-controls button:focus-visible {outline:2px solid var(--accent);outline-offset:3px}
 #screen-access-panel[hidden] {display:none!important}
 #teacher-shortcut-tooltip {position:fixed;z-index:1500;max-width:calc(100vw - 16px);padding:8px 12px;border-radius:8px;background:#172b4d;color:#fff;font-size:12px;line-height:1.6;box-shadow:0 4px 16px #172b4d30;pointer-events:none;overflow-wrap:anywhere}
