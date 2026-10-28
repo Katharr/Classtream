@@ -85,6 +85,11 @@ def render_template(template):
     sections = template[start:end]
     split = sections.index('    <!-- Admin host panel')
     template = template[:start] + sections[split:] + sections[:split] + template[end:]
+    # Keep upstream binding targets inert while removing duplicate sharing panels.
+    template = template.replace('<div id="monitor-list">', '<div id="monitor-list" hidden>')
+    template = template.replace('    <!-- Monitors -->\n    <div class="s-section">',
+                                '    <!-- Monitors -->\n    <div class="s-section" hidden>')
+    template = template.replace('id="screen-access-panel"', 'id="screen-access-panel" hidden')
     start = template.index('      <!-- Display name -->')
     end = template.index('      <!-- Session link generation -->')
     profile = template[start:end]

@@ -99,6 +99,29 @@ button:disabled {opacity:.45;cursor:not-allowed}
 .sw-track:before {height:18px;width:18px;top:3px}
 .sw input:focus-visible+.sw-track {outline:3px solid var(--accent);outline-offset:3px}
 [data-role=student] .teacher-only {display:none!important}
+[data-role=teacher] #btn-pause {display:none!important}
+#teacher-actions {display:flex;gap:6px;flex-shrink:0}
+#teacher-hide-btn {background:#fff4e5;color:#884c00;border-color:#edc48a}
+#teacher-privacy-banner {flex-shrink:0;margin:0 0 10px;background:#fff1db;color:#7b4300;border:1px solid #edc48a;border-radius:8px;padding:10px 18px;font-weight:600}
+#teacher-toast {position:fixed;bottom:88px;left:50%;transform:translateX(-50%);z-index:1200;background:#172b4d;color:#fff;max-width:90vw;padding:12px 20px;border-radius:8px;box-shadow:0 4px 20px #172b4d30}
+#teacher-toast.error {background:#9d2929}
+.teacher-dialog {width:min(680px,94vw);max-width:94vw;max-height:85vh;overflow-y:auto;text-align:left}
+.teacher-dialog h2 {font-size:20px;margin:0 0 12px}
+.teacher-dialog h3 {font-size:16px;margin:18px 0 8px}
+.teacher-dialog p {font-size:13px;color:var(--text-dim);margin:10px 0}
+.teacher-dialog label {display:block;margin:12px 0;font-size:14px}
+.teacher-dialog input:not([type=checkbox]) {border:1px solid var(--border);border-radius:6px;padding:8px;margin-left:8px;max-width:100%;background:#fff;color:var(--text)}
+.teacher-dialog button {border:1px solid var(--border);border-radius:6px;padding:8px 12px;background:#fff;color:var(--text);cursor:pointer}
+.teacher-dialog-heading {display:flex;align-items:center;justify-content:space-between;gap:12px}
+.teacher-command {display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;text-align:left;margin:5px 0}
+.teacher-command.selected {background:var(--accent-glow);border-color:var(--accent)}
+.teacher-command[aria-disabled=true] {color:var(--text-muted)}
+.teacher-command kbd {white-space:nowrap;font-size:12px}
+#teacher-command-results {max-height:48vh;overflow:auto}
+.teacher-binding {display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
+.teacher-binding span {flex:1}
+#teacher-settings-btn {margin:16px 20px}
+#teacher-new-confirm {background:var(--accent);color:white}
 [data-role=student] .mon-btn .res {display:none}
 [data-role=student] #fps-val,[data-role=student] #q-bar {display:none}
 [data-role=student] #fps-bar {font-size:0}
@@ -121,3 +144,7 @@ button:disabled {opacity:.45;cursor:not-allowed}
   .modal-box{padding:28px}.modal-logo{font-size:19px}
 }
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Single-teacher sharing controls and shortcut hints. */
+#screen-access-panel[hidden] {display:none!important}
+#teacher-shortcut-tooltip {position:fixed;z-index:1500;max-width:calc(100vw - 16px);padding:8px 12px;border-radius:8px;background:#172b4d;color:#fff;font-size:12px;line-height:1.6;box-shadow:0 4px 16px #172b4d30;pointer-events:none;overflow-wrap:anywhere}

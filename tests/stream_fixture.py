@@ -18,6 +18,8 @@ from app import state, database
 from stream_transport import FrameStore
 
 app = create_application('http://127.0.0.1:18765', fps=30)
+# Keep synthetic browser checks separate from the running teacher's global keys.
+app.state.teacher_shortcuts.bindings = {'hide': 'Ctrl+Alt+Shift+Y', 'restore': 'Ctrl+Alt+Shift+Z'}
 database.init_db()
 database.create_admin('fixture', 'fixture-password', 'Test teacher')
 database.new_session('Synthetic classroom')
@@ -43,10 +45,13 @@ async def produce():
 @asynccontextmanager
 async def lifespan(_):
     task = asyncio.create_task(produce())
-    yield
-    task.cancel()
-    await asyncio.gather(task, return_exceptions=True)
-    await state.manager.shutdown()
+    try:
+        yield
+    finally:
+        await app.state.teacher_shortcuts.shutdown()
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await state.manager.shutdown()
 
 
 app.router.lifespan_context = lifespan

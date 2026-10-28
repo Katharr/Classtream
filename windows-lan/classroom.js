@@ -1,6 +1,7 @@
 import { state } from '/static/js/state.js';
 import { showNameModal } from '/static/js/auth.js';
 import { adminLogout } from '/static/js/api.js';
+import { initTeacherShortcuts } from '/classroom-ui/teacher-shortcuts.js';
 
 const teacher = document.documentElement.dataset.role === 'teacher';
 if (teacher) {
@@ -8,6 +9,7 @@ if (teacher) {
   document.querySelector('.eyebrow').textContent='教师工作台';
   document.querySelector('.stage-footer span').textContent='保持此页面在线，学生即可观看你的屏幕';
 }
+initTeacherShortcuts();
 const sidebar = document.getElementById('sidebar');
 if (!teacher || matchMedia('(max-width:760px)').matches) sidebar.classList.add('collapsed');
 document.querySelectorAll('button[title]').forEach(el => el.setAttribute('aria-label',el.title));
@@ -19,7 +21,7 @@ for (const [id, label] of Object.entries({
 })) document.getElementById(id)?.setAttribute('aria-label',label);
 document.querySelectorAll('.modal-backdrop').forEach(el => {
   el.setAttribute('role','dialog'); el.setAttribute('aria-modal','true');
-  el.setAttribute('aria-label',el.id==='name-modal'?'进入课堂':el.id==='admin-modal'?'教师登录':'课堂地址');
+  if(!el.hasAttribute('aria-label')) el.setAttribute('aria-label',el.id==='name-modal'?'进入课堂':el.id==='admin-modal'?'教师登录':'课堂地址');
 });
 document.querySelectorAll('.full-overlay').forEach(el => el.setAttribute('role','alert'));
 document.getElementById('conn-state').setAttribute('role','status');
@@ -55,14 +57,15 @@ const stageStatus = document.getElementById('stage-status');
 const live = document.getElementById('live-badge');
 function updateStatus() {
   const connected = conn.textContent.includes('已连接');
-  const text = state.paused ? '画面已暂停 · 可继续观看' : connected ? '正在共享' : '正在连接';
+  const text = teacher && state.privateMode ? '学生画面已隐藏' : state.paused ? '画面已暂停 · 可继续观看' : connected ? '正在共享' : '正在连接';
   stageStatus.textContent = text;
   live.textContent = connected ? '● 课堂进行中' : '● 连接中';
   live.style.color = connected ? 'var(--green)' : 'var(--text-dim)';
-  document.getElementById('btn-pause').setAttribute('aria-pressed',String(state.paused));
+  document.getElementById('btn-pause')?.setAttribute('aria-pressed',String(state.paused));
 }
 new MutationObserver(updateStatus).observe(conn,{childList:true,characterData:true,subtree:true});
 window.addEventListener('classtream-pause',()=>queueMicrotask(updateStatus));
+window.addEventListener('classtream:sharing-status',updateStatus);
 updateStatus();
 
 // Keep toggle state accessible for mouse, keyboard shortcuts and resize layouts.
