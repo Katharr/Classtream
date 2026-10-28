@@ -42,7 +42,7 @@ assert json.dumps(token2) in client.get('/class/').text
 assert json.dumps(token1) not in client.get('/class').text
 assert not database.is_valid_token(token1)
 
-for filename in ('config', 'stream', 'voice', 'main', 'sidebar', 'chat', 'browser-compat'):
+for filename in ('config', 'stream', 'voice', 'main', 'sidebar', 'chat', 'browser-compat', 'stream-client', 'controls'):
     response = client.get(f'/static/js/{filename}.js')
     assert response.status_code == 200
     assert response.headers['cache-control'] == 'no-store'
@@ -60,11 +60,11 @@ with client.websocket_connect('/ws/1?join=' + token1) as ws:
     assert ws.receive_json()['reason'] == 'invalid_session'
 with client.websocket_connect('/ws/1?join=' + token2) as ws:
     assert ws.receive_json()['reason'] == 'host_disconnected'
-with client.websocket_connect('/ws/1?admin_token=' + auth) as host:
+with client.websocket_connect('/ws/1?stream=2&admin_token=' + auth) as host:
     host.send_json({'type':'register','name':'Test teacher','session_id':'host-test'})
     while host.receive_json()['type'] != 'chat:history':
         pass
-    with client.websocket_connect('/ws/1?join=' + token2) as student:
+    with client.websocket_connect('/ws/1?stream=2&join=' + token2) as student:
         student.send_json({'type':'register','name':'Test student','session_id':'student-test'})
         while student.receive_json()['type'] != 'chat:history':
             pass

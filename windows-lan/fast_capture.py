@@ -67,70 +67,96 @@ class FrameSource:
             self.sct.close()
 
 
-async def capture_loop(monitor_id, rect, manager, settings):
-    from app.capture import _draw_cursor
-    source = None
-    try:
-        count = fresh = 0
-        totals = [0.0, 0.0, 0.0, 0]
+CAPTURE_TASKS = set()
+
+
+class CapturePipeline:
+    """Keep capture creation, grabbing and release on one dedicated thread."""
+    def __init__(self, rect):
+        from stream_transport import FrameStore
+        self.source = FrameSource(rect)
+        self.rect = rect
+        self.store = FrameStore()
+        self.resized = None
+
+    def tick(self, quality, show_cursor):
+        import pyautogui
         started = time.perf_counter()
+        frame, changed = self.source.grab()
+        captured = time.perf_counter()
+        if frame is None:
+            return None, (0, 0), self.source.backend
+        if changed or self.resized is None:
+            height = max(1, int(frame.shape[0] * 1280 / frame.shape[1]))
+            self.resized = cv2.resize(frame, (1280, height), interpolation=cv2.INTER_LINEAR)
+        x, y = pyautogui.position()
+        sx = int((x - self.rect['left']) * 1280 / self.rect['width'])
+        sy = int((y - self.rect['top']) * self.resized.shape[0] / self.rect['height'])
+        visible = show_cursor and 0 <= sx < 1280 and 0 <= sy < self.resized.shape[0]
+        cursor = (sx, sy, True) if visible else (0, 0, False)
+        latest = self.store.latest
+        if (not changed and latest is not None and latest.cursor == cursor
+                and self.store.quality == quality):
+            snapshot = None
+        else:
+            snapshot = self.store.update(self.resized, quality, cursor)
+        return snapshot, ((captured - started) * 1000,
+                          (time.perf_counter() - captured) * 1000), self.source.backend
+
+    def close(self):
+        self.source.close()
+
+
+async def capture_loop(monitor_id, rect, manager, settings):
+    from concurrent.futures import ThreadPoolExecutor
+    task = asyncio.current_task()
+    CAPTURE_TASKS.add(task)
+    worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix=f'capture-{monitor_id}')
+    loop = asyncio.get_running_loop()
+    pipeline = None
+    count = 0
+    started = time.perf_counter()
+    last_log = started
+    try:
         while True:
             try:
                 if not manager.connections.get(monitor_id):
-                    count = fresh = 0
-                    totals = [0.0, 0.0, 0.0, 0]
                     started = time.perf_counter()
+                    count = 0
                     await asyncio.sleep(0.1)
                     continue
-                if source is None:
-                    source = FrameSource(rect)
-                    print(f'Capture monitor={monitor_id}: {source.backend}', flush=True)
-                    started = time.perf_counter()
+                if pipeline is None:
+                    pending = loop.run_in_executor(worker, CapturePipeline, rect)
+                    try:
+                        pipeline = await asyncio.shield(pending)
+                    except asyncio.CancelledError:
+                        pipeline = await pending
+                        raise
+                    print(f'Capture monitor={monitor_id}: {pipeline.source.backend}; stream=2', flush=True)
                 begin = time.perf_counter()
-                frame, changed = source.grab()
-                captured = time.perf_counter()
-                if frame is None:
-                    await asyncio.sleep(0.005)
-                    continue
-                height = max(1, int(frame.shape[0] * 1280 / frame.shape[1]))
-                frame = cv2.resize(frame, (1280, height), interpolation=cv2.INTER_LINEAR)
-                if settings.show_cursor:
-                    _draw_cursor(frame, rect, 1280, height)
-                ok, encoded = cv2.imencode('.jpg', frame,
-                    [int(cv2.IMWRITE_JPEG_QUALITY), settings.quality])
-                if not ok:
-                    raise RuntimeError('JPEG encoding failed.')
-                payload = encoded.tobytes()
-                compressed = time.perf_counter()
-                await manager.broadcast(monitor_id, payload)
-                sent = time.perf_counter()
-                count += 1
-                fresh += int(changed)
-                for i, value in enumerate((captured - begin, compressed - captured,
-                                            sent - compressed, len(payload))):
-                    totals[i] += value
-                elapsed = sent - started
-                if elapsed >= 1.0:
-                    await manager.broadcast(monitor_id, json.dumps({
-                        'type': 'meta', 'fps': round(count / elapsed, 1),
-                        'viewers': manager.total_viewers, 'quality': settings.quality,
-                        'session': settings.session_name, 'viewer_list': manager.get_viewer_list(),
-                        'capture_backend': source.backend,
-                        'new_capture_fps': round(fresh / elapsed, 1),
-                        'capture_ms': round(totals[0] * 1000 / count, 2),
-                        'encode_ms': round(totals[1] * 1000 / count, 2),
-                        'send_ms': round(totals[2] * 1000 / count, 2),
-                        'frame_kib': round(totals[3] / count / 1024, 1),
-                    }))
-                    count = fresh = 0
-                    totals = [0.0, 0.0, 0.0, 0]
-                    started = time.perf_counter()
-                remaining = max(0, 1 / max(1, settings.fps) -
-                                (time.perf_counter() - begin))
-                if os.name == 'nt' and settings.fps >= 30 and remaining > 0:
-                    # Windows' IOCP asyncio sleep measured ~15.6 ms even for a
-                    # 1 ms request. Python 3.14 sleep uses a high-resolution
-                    # waitable timer; run it in a worker to keep WS responsive.
+                snapshot, timings, backend = await loop.run_in_executor(
+                    worker, pipeline.tick, settings.quality, settings.show_cursor)
+                if snapshot is not None:
+                    manager.publish(monitor_id, snapshot)
+                    count += 1
+                now = time.perf_counter()
+                elapsed = now - started
+                if elapsed >= 1:
+                    meta = dict(type='meta', fps=round(count / elapsed, 1),
+                                target_fps=min(30, settings.fps), viewers=manager.total_viewers,
+                                quality=settings.quality, session=settings.session_name,
+                                viewer_list=manager.get_viewer_list(), capture_backend=backend,
+                                capture_ms=round(timings[0], 2), encode_ms=round(timings[1], 2),
+                                **manager.metrics(monitor_id))
+                    await manager.broadcast(monitor_id, json.dumps(meta))
+                    if now - last_log >= 5:
+                        logged = {k: v for k, v in meta.items() if k not in ('viewer_list', 'session')}
+                        print(f'Stream monitor={monitor_id}: {json.dumps(logged)}', flush=True)
+                        last_log = now
+                    count = 0
+                    started = now
+                remaining = max(0, 1 / max(1, min(30, settings.fps)) - (time.perf_counter() - begin))
+                if os.name == 'nt' and remaining > 0:
                     await asyncio.to_thread(time.sleep, remaining)
                 else:
                     await asyncio.sleep(remaining)
@@ -138,5 +164,7 @@ async def capture_loop(monitor_id, rect, manager, settings):
                 print(f'[capture monitor={monitor_id}] {exc}', flush=True)
                 await asyncio.sleep(1)
     finally:
-        if source is not None:
-            source.close()
+        if pipeline is not None:
+            await loop.run_in_executor(worker, pipeline.close)
+        worker.shutdown(wait=True)
+        CAPTURE_TASKS.discard(task)

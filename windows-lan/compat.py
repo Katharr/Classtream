@@ -43,7 +43,7 @@ def replace_once(source, old, new, label):
     return source.replace(old, new, 1)
 
 
-def create_application(public_url, fps=60, teacher_url=None):
+def create_application(public_url, fps=30, teacher_url=None):
     if version("classtream") != "1.0.1":
         raise RuntimeError("This adapter requires classtream==1.0.1; see requirements.txt.")
 
@@ -52,7 +52,12 @@ def create_application(public_url, fps=60, teacher_url=None):
     from app import database, state
     from app.main import app as original
     from app import main as original_module
-    from fast_capture import capture_loop
+    from fast_capture import capture_loop, CAPTURE_TASKS
+    from stream_transport import StreamManager
+    if not isinstance(state.manager, StreamManager):
+        if state.manager.connections:
+            raise RuntimeError('Stop the classroom before installing stream transport.')
+        state.manager = StreamManager()
     original_module.capture_loop = capture_loop
     from app.paths import STATIC_DIR, TEMPLATES_DIR
     state.settings.fps = fps
@@ -62,7 +67,15 @@ def create_application(public_url, fps=60, teacher_url=None):
         async with original.router.lifespan_context(original):
             print(f"\nTeacher: {teacher_url or public_url + '/?host=admin'}")
             print(f"Student: {public_url}/class\n", flush=True)
-            yield
+            try:
+                yield
+            finally:
+                import asyncio
+                tasks = list(CAPTURE_TASKS)
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                await state.manager.shutdown()
 
     application = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None,
                           openapi_url=None)
@@ -84,8 +97,40 @@ def create_application(public_url, fps=60, teacher_url=None):
         from fastapi.responses import JSONResponse
         return JSONResponse({'student_url': current_public_url() + '/class'}, headers=no_cache)
     scripts = {}
-    for name in ("config", "stream", "voice", "main", "sidebar", "chat"):
+    for name in ("config", "stream", "voice", "main", "sidebar", "chat", "controls", "auth", "viewers"):
         scripts[name + ".js"] = (STATIC_DIR / "js" / (name + ".js")).read_text("utf-8")
+    scripts['stream-client.js'] = (Path(__file__).parent / 'stream-client.js').read_text('utf-8')
+    scripts['stream.js'] = "import { createFrameReceiver } from './stream-client.js';\n" + scripts['stream.js']
+    scripts['stream.js'] = replace_once(scripts['stream.js'],
+        'new URLSearchParams({ session_id: SESSION_ID })',
+        "new URLSearchParams({ session_id: SESSION_ID, stream: '2' })", 'stream negotiation')
+    scripts['stream.js'] = replace_once(scripts['stream.js'],
+        "  const img = document.getElementById('screen-img');",
+        "  const img = document.getElementById('screen-img');\n"
+        "  const receiveFrame = createFrameReceiver(ws, img, _hideSinglePrivate);", 'single receiver')
+    scripts['stream.js'] = replace_once(scripts['stream.js'],
+        "    if (state.paused) return;\n    // Live frame arrived — hide private overlay if it was showing\n"
+        "    _hideSinglePrivate();\n    const url = URL.createObjectURL(e.data);\n"
+        "    const old = img.src;\n    img.src = url;\n"
+        "    if (old && old.startsWith('blob:')) URL.revokeObjectURL(old);",
+        '    receiveFrame(e.data);', 'single frame rendering')
+    # Both original grid and reconnect paths use the same receiver.
+    if scripts['stream.js'].count('let prev = null;') != 2:
+        raise RuntimeError('Unsupported grid stream source.')
+    scripts['stream.js'] = scripts['stream.js'].replace('let prev = null;',
+        'const receiveFrame = createFrameReceiver(ws, gimg, () => _hideCellPrivate(cell, gimg));')
+    for indent in ('      ', '    '):
+        scripts['stream.js'] = replace_once(scripts['stream.js'],
+            indent + 'if (state.paused) return;\n' + indent + '_hideCellPrivate(cell, gimg);\n' +
+            indent + 'const url = URL.createObjectURL(e.data); gimg.src = url;\n' +
+            indent + 'if (prev) URL.revokeObjectURL(prev); prev = url;',
+            indent + 'receiveFrame(e.data);', 'grid frame rendering ' + str(len(indent)))
+    scripts['stream.js'] = replace_once(scripts['stream.js'],
+        "document.createElement('img')", "document.createElement('canvas')", 'grid canvas')
+    scripts['controls.js'] = replace_once(scripts['controls.js'],
+        'state.paused = !state.paused;',
+        "state.paused = !state.paused;\n  window.dispatchEvent(new Event('classtream-pause'));", 'pause repaint')
+    scripts['controls.js'] = scripts['controls.js'].replace('img.naturalWidth', 'img.width').replace('img.naturalHeight', 'img.height')
     scripts['browser-compat.js'] = (Path(__file__).parent / 'browser-compat.js').read_text('utf-8')
     scripts['config.js'] = "import { createSessionId } from './browser-compat.js';\n" + scripts['config.js']
     scripts['config.js'] = replace_once(scripts['config.js'], 'crypto.randomUUID()',
@@ -126,6 +171,8 @@ def create_application(public_url, fps=60, teacher_url=None):
         scripts['main.js'] = "import { watchClassroomAddress } from './browser-compat.js';\nwatchClassroomAddress();\n" + scripts['main.js']
 
     template = (TEMPLATES_DIR / "index.html").read_text("utf-8")
+    template = replace_once(template, '<img id="screen-img" src="" alt="Screen stream"/>',
+        '<canvas id="screen-img" width="1280" height="800" aria-label="Screen stream"></canvas>', 'screen canvas')
     if template.count("<head>") != 1:
         raise RuntimeError("Unsupported Classtream HTML template.")
     template = template.replace('<head>', '<head><script>window.__CLASSTREAM_VOICE_ENABLED__=' +

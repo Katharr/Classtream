@@ -7,7 +7,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "windows-lan"
 FILES = (
-    "compat.py", "lan.py", "windows_job.py", "fast_capture.py", "config.json",
+    "compat.py", "lan.py", "windows_job.py", "fast_capture.py", "stream_transport.py", "stream-client.js", "config.json",
     "requirements.txt", "requirements-lock.txt", "setup.cmd", "start.cmd",
     "stop.cmd", "check.cmd", "allow-firewall.cmd", "allow-firewall.ps1",
     "README.md", "先读我.txt", "LICENSE", "browser-compat.js", "install.cmd",
@@ -16,7 +16,7 @@ FILES = (
     "bin/CADDY-README.md", "bin/CADDY-VERIFICATION.txt",
 )
 DEFAULTS = dict(mode="http", teacher_ip="192.0.2.1", http_port=8080,
-                https_port=8443, backend_port=8000, fps=60)
+                https_port=8443, backend_port=8000, fps=30)
 
 
 def build():

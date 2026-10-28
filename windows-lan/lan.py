@@ -28,7 +28,7 @@ CADDY_SHA256 = "5f93a9bd555f3aac9d33af2756ba14b3519d8cca4ffd55256bdaeab444c9db2a
 
 def configuration():
     cfg = json.loads((ROOT / "config.json").read_text("utf-8-sig"))
-    cfg.setdefault("fps", 60)
+    cfg.setdefault("fps", 30)
     cfg.setdefault("mode", "http")
     cfg.setdefault("http_port", 8080)
     if cfg['mode'] not in ('http', 'https'):
