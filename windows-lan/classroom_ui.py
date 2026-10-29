@@ -63,6 +63,91 @@ def _swap(source, old, new):
     return source.replace(old, new, 1)
 
 
+def _focus_layout(template):
+    """Keep upstream bindings while giving the shared screen the whole stage."""
+    def button(button_id):
+        return re.search(rf'<button\b[^>]*\bid="{button_id}".*?</button>', template, re.S)[0]
+
+    logo = re.search(r'<div id="logo".*?</div>', template, re.S)[0]
+    logo = re.sub(r'</svg>.*?</div>', '</svg></div>', logo, flags=re.S)
+    viewer = re.search(r'<div class="badge" id="viewer-badge".*?</div>', template, re.S)[0]
+    viewer = viewer.replace('<div ', '<button type="button" ', 1).replace('</div>', '</button>')
+    viewer = viewer.replace('title="当前在线人数（含教师）"',
+                            'title="查看课堂成员" aria-controls="sidebar" aria-expanded="false"')
+    chat = button('chat-toggle-btn').replace('icon-btn', 'btn').replace('课堂讨论</span>', '讨论</span>')
+    sidebar_toggle = button('sidebar-toggle-btn').replace('id="sidebar-toggle-btn"',
+                                                         'id="sidebar-toggle-btn" hidden')
+    identity = button('identity-btn')
+    # Replace only the topbar region, leaving every upstream binding target once.
+    start = template.index('<div id="topbar">')
+    end = template.index('<!-- ═', start)
+    template = template[:start] + f'''<header id="topbar">
+  {logo}
+  <div class="classroom-heading"><button id="classroom-menu-btn" class="icon-btn" aria-expanded="false" aria-controls="classroom-menu" aria-label="课堂菜单">
+    <span id="classroom-title">正在准备课堂…</span><span aria-hidden="true">⌄</span>
+  </button></div>
+  <span id="session-name" hidden>正在准备课堂…</span>
+  <span id="host-topbar-badge" hidden>教师</span><span id="live-badge" hidden></span>
+  <div class="classroom-top-actions">
+    {viewer}
+    <button id="classroom-invite-btn" class="icon-btn teacher-only" aria-label="复制学生上课地址"><span aria-hidden="true">↗</span><span>邀请学生</span></button>
+    <button id="classroom-settings-btn" class="icon-btn" aria-controls="sidebar" aria-expanded="false" aria-label="课堂设置"><span aria-hidden="true">⚙</span><span>设置</span></button>
+    <span id="classroom-student-identity"></span>
+  </div>
+  {sidebar_toggle}
+</header>
+<div id="classroom-menu" class="classroom-popover" role="region" aria-label="课堂菜单" hidden>
+  <div class="classroom-menu-heading">当前课堂</div><div id="classroom-menu-name"></div>
+  <button id="classroom-room-btn" class="icon-btn teacher-only">课堂管理</button>
+  <button id="classroom-new-btn" class="icon-btn teacher-only">创建新课堂</button>
+  <button id="classroom-menu-members" class="icon-btn">查看课堂成员</button>
+  {identity}
+</div>
+''' + template[end:]
+    template = _swap(template, '<aside id="sidebar" aria-label="课堂面板">', '''<aside id="sidebar" class="collapsed" data-panel="settings" aria-label="课堂设置" inert>
+    <div class="classroom-drawer-heading"><h2 id="classroom-drawer-title">课堂设置</h2><button id="classroom-sidebar-close" class="icon-btn" aria-label="关闭课堂面板">×</button></div>''')
+    template = template.replace('<details class="advanced-settings teacher-only"><summary>更多设置</summary>',
+                                '<div class="advanced-settings">')
+    template = re.sub(r'</details>(\s*</aside>)', r'</div>\1', template, count=1)
+    template = template.replace('class="s-section" id="host-panel"', 'class="s-section teacher-only" id="host-panel"')
+    template = template.replace('<div class="s-section"><div class="s-label">教师信息',
+                                '<div class="s-section teacher-only"><div class="s-label">教师信息')
+    template = template.replace('<div class="s-section">\n      <div class="s-label">显示选项',
+                                '<div class="s-section teacher-only">\n      <div class="s-label">显示选项')
+    template = _swap(template, '    <!-- Viewer list -->\n    <div class="s-section">',
+                     '''    <!-- Viewer list -->
+    <div class="s-section sidebar-members">
+      <button id="classroom-member-manage" class="host-btn teacher-only">发言权限管理</button>''')
+    template = re.sub(r'      <header class="stage-heading">.*?</header>', '', template, count=1, flags=re.S)
+    template = re.sub(r'<footer class="stage-footer">.*?</footer>',
+                      '<footer class="stage-footer"><span id="stage-status" role="status">正在连接</span></footer>',
+                      template, count=1, flags=re.S)
+    template = _swap(template, '<div class="chat-header">',
+                     '<div class="chat-header"><button id="classroom-chat-close" class="icon-btn" aria-label="关闭课堂讨论">×</button>')
+    # The dock holds common actions; the original zoom buttons live in one popover.
+    zoom = '\n'.join(button(name) for name in ('btn-zoom-in', 'btn-zoom-out', 'btn-zoom-reset'))
+    for name in ('btn-zoom-in', 'btn-zoom-out', 'btn-zoom-reset'):
+        template = template.replace(button(name), '')
+    zoom = zoom.replace('>1:1</button>', '>适应窗口</button>')
+    template = _swap(template, '</div><!-- /bottombar -->', f'''
+  <button id="classroom-zoom-btn" class="btn" aria-expanded="false" aria-controls="classroom-zoom-menu" aria-label="缩放画面"><span aria-hidden="true">⛶</span><span id="classroom-zoom-label">适应窗口</span><span aria-hidden="true">⌄</span></button>
+  {chat}
+  <button id="classroom-more-btn" class="btn" aria-controls="sidebar" aria-expanded="false">更多</button>
+</div><!-- /bottombar -->
+<div id="classroom-zoom-menu" class="classroom-popover" role="region" aria-label="画面缩放" hidden>{zoom}</div>''')
+    conn = re.search(r'<span id="conn-state".*?</span>', template, re.S)[0]
+    template = template.replace(conn, '')
+    template = _swap(template, '<span id="stage-status" role="status">正在连接</span>',
+                     '<span id="stage-status" role="status">正在连接</span>' + conn)
+    fps = re.search(r'<div id="fps-bar">.*?</div>', template, re.S)[0]
+    template = template.replace(fps, '')
+    template = _swap(template, '<div class="advanced-settings">',
+                     '<div class="advanced-settings">' + fps.replace('<div id="fps-bar">', '<div id="fps-bar" hidden>'))
+    template = template.replace('</svg>全屏观看', '</svg><span>全屏</span>')
+    template = template.replace('</svg>保存截图', '</svg><span>截图</span>')
+    return template
+
+
 def render_template(template):
     """Retain upstream IDs and behavior, regroup controls around classroom tasks."""
     template = template.replace('lang="en"', 'lang="zh-CN"')
@@ -124,6 +209,7 @@ def render_template(template):
     template = template.replace(fullscreen, '')
     template = re.sub(r'(<button class="btn" id="btn-pause".*?</button>)',
                       lambda m: m[1] + '\n' + fullscreen, template, count=1, flags=re.S)
+    template = _focus_layout(template)
     template = _swap(template, '<script type="module" src="/static/js/main.js"></script>',
                      '<script type="module" src="/static/js/main.js"></script>\n<script type="module" src="/classroom-ui/classroom.js"></script>\n<script type="module" src="/classroom-ui/screen-pan.js"></script>')
     return template

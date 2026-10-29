@@ -39,6 +39,7 @@ function toast(text,error=false) {
   if(!error) toastTimer=setTimeout(()=>$('teacher-toast').hidden=true,2400);
 }
 function focusSection(id) {
+  document.dispatchEvent(new CustomEvent('classtream:open-panel', {detail:{panel:'settings'}}));
   $('sidebar').classList.remove('collapsed');
   const el=$(id); const details=el?.closest('details'); if(details)details.open=true;
   if(el){el.scrollIntoView({block:'nearest'});if(!el.matches('input,select,button,textarea'))el.tabIndex=-1;el.focus();}
@@ -58,14 +59,19 @@ function openDialog(id, focus) {
   returnFocus=document.activeElement;
   $(id).classList.remove('hidden'); $(focus).focus();
 }
+function restoreDialogFocus() {
+  const visible=returnFocus?.isConnected && returnFocus.getClientRects().length &&
+    !returnFocus.closest('[inert],.hidden,[hidden]');
+  (visible?returnFocus:$('classroom-menu-btn'))?.focus();
+}
 function closeDialog(id, restore=true) {
   $(id).classList.add('hidden'); record=null;
-  if(restore && returnFocus?.isConnected)returnFocus.focus();
+  if(restore)restoreDialogFocus();
 }
 function syncFreeze(hidden) {
   state.sharingFrozen=hidden;
   $('teacher-privacy-banner').hidden=!hidden;
-  $('teacher-hide-btn').textContent=hidden?'解除冻结':'冻结共享';
+  $('teacher-hide-btn').lastChild.textContent=hidden?'恢复学生画面':'冻结学生画面';
   $('teacher-hide-btn').setAttribute('aria-pressed',String(hidden));
   window.dispatchEvent(new Event('classtream:sharing-status'));
 }
@@ -177,7 +183,7 @@ export function initTeacherShortcuts() {
   document.querySelectorAll('.shortcut-row').forEach(row=>{if(row.textContent.includes('暂停'))row.remove();});
   state.paused=false;
   const toolbar=document.createElement('div'); toolbar.id='teacher-actions';
-  toolbar.innerHTML='<button id="teacher-hide-btn" class="btn" aria-pressed="false">冻结共享</button><button id="teacher-command-btn" class="btn">快捷操作 /</button><button id="teacher-help-btn" class="btn" aria-label="快捷键帮助">?</button>';
+  toolbar.innerHTML='<button id="teacher-hide-btn" class="btn" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg><span>冻结学生画面</span></button><button id="teacher-command-btn" class="btn" aria-label="更多操作与快捷命令"><span aria-hidden="true">···</span><span>更多</span></button><button id="teacher-help-btn" class="host-btn" aria-label="快捷键帮助">快捷键帮助</button>';
   $('bottombar').prepend(toolbar);
   const ui=document.createElement('div');ui.id='teacher-shortcut-ui';
   ui.innerHTML=`
@@ -220,7 +226,7 @@ export function initTeacherShortcuts() {
   add('create','创建新课堂','cj kt',()=>{ $('teacher-new-name').value=$('session-name-input').value;openDialog('teacher-new-dialog','teacher-new-name');});
   add('sidebar','课堂面板','kt mb',toggleSidebar);add('chat','课堂讨论','kt tl',toggleChat);
   add('type','输入讨论消息','sr tl xx',()=>{openChat();$('chat-input').focus();});
-  add('members','查看课堂成员','ck cy',()=>focusSection('viewer-list-panel'));
+  add('members','查看课堂成员','ck cy',()=>document.dispatchEvent(new CustomEvent('classtream:open-panel',{detail:{panel:'members'}})));
   add('grid','全部屏幕预览（本地）','qb pm yl',selectAllGrid);
   add('fullscreen','全屏预览（本地）','qp yl',toggleFullscreen);
   add('screenshot','保存截图（本地）','bc jt',takeScreenshot,{single:true});
@@ -341,5 +347,5 @@ export function initTeacherShortcuts() {
   window.addEventListener('blur',()=>{$('teacher-web-state').textContent='网页快捷键暂不可用；已启用的全局冻结/解除仍可使用。';});
   setInterval(poll,2000);poll();
   // Preserve clipboard-modal focus after it closes through its existing button.
-  $('close-link-modal').addEventListener('click',()=>{if(returnFocus?.isConnected)returnFocus.focus();});
+  $('close-link-modal').addEventListener('click',restoreDialogFocus);
 }

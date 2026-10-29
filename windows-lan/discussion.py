@@ -120,7 +120,7 @@ def adapt_discussion_scripts(scripts):
         scripts[name] = scripts[name].replace(old, new, 1)
 
     scripts['main.js'] = "import { initDiscussion } from '/classroom-ui/discussion.js';\n" + scripts['main.js']
-    swap('main.js', '  initChat();', '  initDiscussion();\n  initChat();\n  toggleChat();')
+    swap('main.js', '  initChat();', '  initDiscussion();\n  initChat();')
     scripts['viewers.js'] = "import { handleModeration, renderDiscussionMembers } from '/classroom-ui/discussion.js';\n" + scripts['viewers.js']
     swap('viewers.js', "  if (data.type?.startsWith('chat:'))", "  if (handleModeration(data)) return;\n  if (data.type?.startsWith('chat:'))")
     swap('viewers.js', '  _renderViewerList(list);', '  _renderViewerList(list);\n  renderDiscussionMembers();')

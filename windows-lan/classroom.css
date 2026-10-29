@@ -1,177 +1,198 @@
-/* Local, dependency-free classroom skin. Shared transport and DOM IDs are retained. */
+/* Teaching UI: the shared screen is the stage; management opens on demand.
+   Keep upstream IDs and transport behavior intact. */
 :root {
-  --bg:#f5f6f8; --sidebar-bg:#fff; --panel-bg:#f7f8fa; --border:#e3e7ed;
-  --text:#202b3c; --text-dim:#536174; --text-muted:#657389;
-  --accent:#2364df; --accent-glow:#edf3ff; --green:#16764e; --red:#c53636;
-  --gold:#2364df; --gold-glow:#edf3ff; --sidebar-w:284px;
-  --topbar-h:68px; --bottombar-h:72px;
+  --bg:#f2f4f8; --sidebar-bg:#fff; --panel-bg:#f6f8fb; --border:#e0e6ef;
+  --text:#202a3b; --text-dim:#536177; --text-muted:#66738a;
+  --accent:#245fe4; --accent-glow:#edf3ff; --green:#197852; --red:#b74444;
+  --gold:var(--accent); --gold-glow:var(--accent-glow);
+  --amber:#8c570b; --amber-bg:#fff3df; --on-accent:#fff;
+  --shadow:0 10px 36px #23314b16; --sidebar-w:360px;
+  --topbar-h:64px; --bottombar-h:92px;
 }
-body {font-family: "Segoe UI","Microsoft YaHei",system-ui,sans-serif; font-size:14px; line-height:1.6}
+html,body {height:100%;height:100dvh;overflow:hidden}
+body {font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;font-size:14px;line-height:1.6}
 button,input,select,textarea {font:inherit}
 button {touch-action:manipulation}
-button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible {outline:3px solid #2364df; outline-offset:3px}
+button:focus-visible,summary:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible {outline:3px solid var(--accent);outline-offset:3px}
 button:disabled {opacity:.45;cursor:not-allowed}
-#topbar {padding:0 24px;gap:14px;background:#fff;border-bottom:1px solid var(--border)}
-#logo {font-size:18px;letter-spacing:-.5px;color:var(--text)}
-#logo svg {width:30px;height:30px;padding:5px;border-radius:9px;background:var(--accent);color:#fff}
-#session-name {text-align:left;border-left:1px solid var(--border);padding-left:20px;font-size:14px;color:var(--text-dim)}
-.icon-btn {min-height:40px;gap:8px;border-color:var(--border);padding:8px 12px;line-height:1.4;font-size:13px;color:var(--text)}
-.icon-btn:hover {background:var(--panel-bg);color:var(--accent)}
-.badge {font-size:12px;font-weight:500}
-#host-topbar-badge {border:0;background:var(--accent-glow)}
-#viewer-badge {background:#f7f8fa}
-.identity-btn {border:0;background:transparent;color:var(--text-dim);font-size:13px;cursor:pointer;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:10px 4px}
-#sidebar {padding:10px 0;border-right:1px solid var(--border)}
-#sidebar.collapsed {min-width:0;padding:0;border:0;visibility:hidden}
-#sidebar-resize-handle {width:2px;background:transparent}
-.s-section {padding:18px 20px;border-color:#edf0f4}
-.s-label {font-size:13px;font-weight:600;letter-spacing:0;color:var(--text);margin-bottom:12px;text-transform:none}
-#host-panel {border-bottom:1px solid var(--border)}
-#host-panel .s-label {color:var(--text);font-size:16px}
-.host-input,.modal-input {background:#fff;min-height:42px;font-size:14px;border-radius:8px}
-.host-input:focus {border-color:var(--accent)}
-.host-btn {font-size:13px;border:1px solid var(--border);background:#fff;color:var(--text);min-height:38px;border-radius:8px}
-.host-btn:hover {background:var(--accent-glow);border-color:#b7cef8}
-#new-session-btn,#copy-link-btn {background:var(--accent);border-color:var(--accent);color:#fff}
-#current-session-link {padding:10px;background:var(--panel-bg);border:1px dashed var(--border);border-radius:8px;margin:10px 0;font-size:12px;color:var(--text-dim)}
-.range-row,.toggle-row {font-size:13px}
-.mon-btn {min-height:44px;border:0;background:var(--panel-bg);font-size:13px;margin-bottom:7px;padding:10px}
-.mon-btn.active {background:var(--accent-glow);color:var(--accent);box-shadow:inset 3px 0 var(--accent)}
-.mon-btn .res {font-size:11px}
-.advanced-settings>summary {padding:18px 20px;cursor:pointer;color:var(--text-dim);font-size:13px}
-.advanced-settings[open]>summary {border-bottom:1px solid var(--border)}
-.no-viewers {font-size:13px;color:var(--text-muted)}
-.viewer-entry {min-height:40px;background:transparent}
-.viewer-entry.is-host {background:var(--accent-glow)}
-.v-avatar,.msg-avatar {background:#edf2f8;color:#49607e}
-.host-av {background:var(--accent-glow);color:var(--accent)}
-.host-tag,.you-tag {font-size:10px}
-#main {min-width:0}
-#stage {display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;padding:0 28px}
-.stage-heading {display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px 0 20px;flex-shrink:0}
-.eyebrow {font-size:12px;color:var(--text-muted);margin-bottom:4px}
-.stage-heading h1 {font-size:22px;font-weight:600;letter-spacing:-.6px}
-#stage-status {font-size:12px;color:var(--text-dim);background:#fff;border:1px solid var(--border);padding:5px 12px;border-radius:20px;white-space:nowrap}
-#screen-area {padding:16px;background:#e9edf2;border:1px solid #dfe4eb;border-radius:12px;min-height:0}
-#single-view {width:100%;height:100%;min-height:0}
-#screen-img {max-width:100%;max-height:100%;width:auto;height:auto;border-radius:5px;box-shadow:0 4px 24px #1f304015}
+[hidden] {display:none!important}
+svg {flex-shrink:0}
+
+/* Quiet application chrome. */
+#topbar {height:var(--topbar-h);min-height:var(--topbar-h);padding:0 28px;gap:12px;background:var(--bg);border:0;position:relative;z-index:120;min-width:0}
+#logo {font-size:0;gap:0;flex-shrink:0;width:32px;overflow:hidden}
+#logo svg {width:32px;height:32px;padding:6px;border-radius:9px;background:var(--accent);color:var(--on-accent)}
+#session-name,#sidebar-toggle-btn,#host-topbar-badge,#live-badge {display:none!important}
+#classroom-title {font-size:15px;font-weight:600;letter-spacing:-.2px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.classroom-heading,.classroom-title-group {display:flex;align-items:center;gap:4px;min-width:0;flex:1}
+.classroom-top-actions {display:flex;align-items:center;gap:6px;flex-shrink:0;min-width:0}
+#classroom-menu-btn {display:inline-flex;align-items:center;flex-shrink:1;max-width:100%;padding:8px;border:0;background:transparent;color:var(--text-dim);border-radius:8px;cursor:pointer;min-height:36px;min-width:0;overflow:hidden}
+#classroom-menu-btn>span:last-child {flex-shrink:0}
+#classroom-menu-btn svg {width:15px;height:15px}
+.icon-btn,#viewer-badge,#classroom-invite-btn,#classroom-settings-btn {display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 11px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-dim);font-size:13px;line-height:1.4;white-space:nowrap;cursor:pointer}
+.icon-btn:hover,#viewer-badge:hover,#classroom-invite-btn:hover,#classroom-settings-btn:hover,#classroom-menu-btn:hover {background:var(--sidebar-bg);color:var(--text)}
+#viewer-badge {margin-left:auto;font-weight:400}
+#viewer-badge svg,#classroom-invite-btn svg,#classroom-settings-btn svg {width:17px;height:17px}
+#viewer-badge.bump {background:var(--accent-glow)}
+#classroom-settings-btn {width:40px;padding:10px}
+.identity-btn {border:0;background:transparent;color:var(--text-dim);font-size:13px;cursor:pointer;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:9px 11px;border-radius:7px}
+.identity-btn:hover {background:var(--panel-bg)}
+#classroom-student-identity {display:flex;align-items:center;min-width:0}
+#classroom-student-identity .identity-btn:disabled {opacity:1;cursor:default;color:var(--text-muted)}
+.badge {font-size:12px;font-weight:400}
+
+/* The screen occupies all available width; drawers never change its size. */
+#body {position:relative;min-width:0;min-height:0;padding-bottom:var(--bottombar-h)}
+#main {min-width:0;min-height:0}
+#stage {display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;padding:8px 28px 0}
+.stage-heading {display:none}
+#screen-area {padding:0;background:transparent;border:0;border-radius:6px;min-height:0;isolation:isolate}
+#single-view {width:100%;height:100%;min-height:0;max-height:100%}
+#screen-img {max-width:100%;max-height:100%;width:auto;height:auto;border-radius:5px;box-shadow:0 1px 10px #23314b0a;object-fit:contain}
 #screen-area.zoomed #single-view {cursor:grab;touch-action:none;user-select:none}
 #screen-area.zoomed.panning #single-view {cursor:grabbing}
 #screen-area.panning #screen-img {transition:none}
-.stage-footer {display:flex;justify-content:space-between;gap:12px;padding:14px 0 20px;font-size:12px;color:var(--text-muted);flex-shrink:0}
-#stream-overlay,#single-private-overlay {background:#edf1f7f5;color:var(--text)}
-#stream-overlay {border-radius:12px}
+.stage-footer {display:flex;align-items:center;justify-content:center;gap:16px;min-height:38px;padding:8px 0 2px;font-size:12px;color:var(--text-muted);flex-shrink:0;flex-wrap:wrap}
+#stage-status {font-size:12px;color:var(--green);background:transparent;border:0;padding:0;border-radius:0;white-space:normal}
+#stage-status[data-frozen=true] {color:var(--amber)}
+#conn-state {font-size:12px;white-space:nowrap}
+#stream-overlay,#single-private-overlay {background:var(--bg);color:var(--text);border-radius:6px;text-align:center;padding:20px}
+#overlay-msg {max-width:100%;overflow-wrap:anywhere}
 .gcell-label,.gcell-hint {color:#fff}
-#bottombar {gap:8px;padding:12px 24px;background:#fff;min-height:72px}
-.btn {min-height:40px;border-color:var(--border);padding:8px 14px;font-size:13px;color:var(--text);border-radius:8px}
-.btn svg {width:16px;height:16px}
-.btn.active {color:var(--accent);background:var(--accent-glow)}
-#btn-fullscreen {color:#fff;background:var(--accent);border-color:var(--accent)}
-#fps-bar {font-size:12px}
-#chat-panel {background:#fff;min-width:280px;width:340px;border-left:1px solid var(--border)}
-.chat-header {min-height:76px;padding:20px}
-.chat-title {font-size:15px;letter-spacing:0;color:var(--text);text-transform:none}
-#chat-messages {padding:16px;gap:12px}
-#chat-messages:empty:before {content:"这里是课堂讨论区\A 不懂就问，和老师同学一起交流";white-space:pre-line;text-align:center;color:var(--text-muted);font-size:13px;line-height:2;padding-top:44px}
-.msg-content {font-size:14px;line-height:1.7;color:var(--text)}
+
+/* A compact dock keeps the few teaching actions within reach. */
+#bottombar {position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:140;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:5px;width:max-content;max-width:calc(100vw - 32px);height:auto;min-height:60px;padding:8px;background:var(--sidebar-bg);border:1px solid var(--border);border-radius:13px;box-shadow:0 5px 24px #23314b12;overflow:visible}
+#teacher-actions {display:contents}
+.btn,#bottombar .icon-btn {display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 11px;border:1px solid transparent;background:transparent;color:var(--text-dim);font-size:13px;line-height:1.4;border-radius:7px;white-space:nowrap;cursor:pointer}
+.btn svg,#bottombar .icon-btn svg {width:17px;height:17px}
+.btn:hover,#bottombar .icon-btn:hover {background:var(--panel-bg);border-color:transparent;color:var(--text)}
+.btn.active,#bottombar .icon-btn.active {background:var(--accent-glow);border-color:transparent;color:var(--accent)}
+#teacher-hide-btn,#btn-pause {order:0;background:var(--amber-bg);color:var(--amber);padding-left:13px;padding-right:13px}
+#teacher-hide-btn[aria-pressed=true] {background:var(--amber);color:#fff;border-color:var(--amber)}
+#btn-fullscreen {order:1;background:transparent;border-color:transparent;color:var(--text-dim)}
+#btn-fullscreen:hover {background:var(--panel-bg);color:var(--text)}
+#classroom-zoom-btn {order:2}
+#btn-screenshot {order:3}
+#chat-toggle-btn {order:4;position:relative;margin-left:0;background:transparent;color:var(--text-dim);border-color:transparent;border-left-color:var(--border);border-radius:0 7px 7px 0;padding-left:15px}
+#chat-toggle-btn[aria-expanded=true] {background:var(--accent-glow);color:var(--accent);border-color:transparent}
+#teacher-command-btn,#classroom-more-btn {order:5}
+#teacher-help-btn {order:6;min-width:34px;padding-left:10px;padding-right:10px}
+#bottombar>.sep,#fps-bar {display:none}
+
+/* Floating classroom and settings panels share a predictable shell. */
+#sidebar,#chat-panel {position:fixed;inset:calc(var(--topbar-h) + 8px) 20px calc(var(--bottombar-h) + 8px) auto;width:min(360px,calc(100vw - 40px))!important;min-width:0;max-width:none;max-height:calc(100dvh - var(--topbar-h) - var(--bottombar-h) - 16px);padding:0;background:var(--sidebar-bg);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);z-index:130;transition:none}
+#sidebar {display:flex;flex-direction:column;overflow:auto}
+#sidebar.collapsed {width:0!important;min-width:0;padding:0;border:0;visibility:hidden;opacity:0;pointer-events:none;box-shadow:none}
+#sidebar-resize-handle,#chat-resize-handle {display:none!important}
+#chat-panel {display:flex;flex-direction:column;overflow:hidden}
+#chat-panel.hidden {display:none}
+.classroom-drawer-heading,.chat-header {display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:59px;padding:12px 18px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--sidebar-bg)}
+.classroom-drawer-heading {position:sticky;top:0;z-index:2}
+.classroom-drawer-heading h2,.classroom-drawer-heading h3,.chat-title {font-size:15px;font-weight:600;letter-spacing:0;color:var(--text);text-transform:none;margin:0}
+.chat-title {order:0;min-width:0;flex:1}
+#discussion-teacher-controls {order:1}
+#classroom-chat-close {order:2}
+.classroom-drawer-heading button,#classroom-chat-close,#classroom-sidebar-close {display:inline-flex;align-items:center;justify-content:center;min-height:34px;min-width:34px;padding:7px;border:0;border-radius:7px;background:transparent;color:var(--text-dim);cursor:pointer}
+.classroom-drawer-heading button:hover,#classroom-chat-close:hover,#classroom-sidebar-close:hover {background:var(--panel-bg)}
+.classroom-drawer-heading button svg,#classroom-chat-close svg {width:17px;height:17px}
+.s-section {padding:20px;border-bottom:1px solid var(--border)}
+.s-label {font-size:13px;font-weight:600;letter-spacing:0;color:var(--text);margin-bottom:13px;text-transform:none}
+#host-panel {border-bottom:0}
+#host-panel .s-label {color:var(--text);font-size:14px}
+.host-row {gap:7px;margin-bottom:12px}
+.host-input,.modal-input {background:var(--sidebar-bg);color:var(--text);min-height:42px;font-size:14px;border-radius:8px}
+.host-input:focus {border-color:var(--accent)}
+.host-btn {font-size:13px;border:1px solid var(--border);background:var(--sidebar-bg);color:var(--text);min-height:40px;border-radius:8px;padding:9px 12px}
+.host-btn:hover {background:var(--accent-glow);border-color:var(--accent)}
+#new-session-btn {background:var(--sidebar-bg);border-color:var(--border);color:var(--text)}
+#copy-link-btn {background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+#current-session-link {padding:11px;background:var(--panel-bg);border:1px solid var(--border);border-radius:8px;margin:10px 0;font-size:12px;color:var(--text-dim);overflow-wrap:anywhere}
+.advanced-settings {min-width:0}
+.advanced-settings>.s-section:last-child {border-bottom:0}
+.advanced-settings>summary {padding:18px 20px;cursor:pointer;color:var(--text-dim);font-size:13px}
+#sidebar[data-panel=room] .advanced-settings,#sidebar[data-panel=settings] #host-panel,.sidebar-members {display:none!important}
+#sidebar[data-panel=members] #host-panel,#sidebar[data-panel=members] .advanced-settings {display:none!important}
+#sidebar[data-panel=members] .sidebar-members {display:block!important}
+#sidebar:not([data-panel=settings]) #voice-section {display:none}
+.sidebar-members #viewer-list-panel {max-height:none;overflow:visible}
+.sidebar-members .s-label {display:flex;align-items:center;gap:7px}
+.advanced-settings #fps-bar {display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;font-size:12px;white-space:normal;overflow-wrap:anywhere}
+#classroom-member-manage {margin-bottom:18px}
+#teacher-help-btn {display:none}
+#teacher-settings-btn {margin:18px 20px;width:calc(100% - 40px)}
+.range-row,.toggle-row {font-size:13px}
+.range-hints {font-size:12px;margin-top:8px}
+.sw {width:38px;height:24px;flex-shrink:0}
+.sw-track:before {height:18px;width:18px;top:3px}
+.sw input:checked+.sw-track:before {transform:translateX(14px)}
+.sw input:focus-visible+.sw-track {outline:3px solid var(--accent);outline-offset:3px}
+.mon-btn {min-height:44px;border:0;background:var(--panel-bg);font-size:13px;margin-bottom:7px;padding:10px}
+.mon-btn.active {background:var(--accent-glow);color:var(--accent);box-shadow:inset 3px 0 var(--accent)}
+.mon-btn .res {font-size:11px}
+.no-viewers {font-size:13px;color:var(--text-muted)}
+.viewer-entry {min-height:44px;background:transparent}
+.viewer-entry.is-host {background:var(--accent-glow)}
+.v-avatar,.msg-avatar {background:var(--panel-bg);border-color:var(--border);color:var(--text-dim)}
+.v-avatar.host-av {background:var(--accent-glow)!important;border-color:var(--border)!important;color:var(--accent)!important}
+.host-tag,.you-tag {font-size:11px;background:var(--accent-glow);color:var(--accent);border-color:var(--border)}
+.stat-box {background:var(--panel-bg);border:0;text-align:left;padding:12px}
+.stat-val {font-size:22px;color:var(--text);font-weight:500}
+.stat-lbl,.shortcut-row {font-size:12px;letter-spacing:0;text-transform:none}
+.shortcut-row {min-height:28px;gap:10px}
+kbd {font-size:11px}
+
+/* Menus are opaque and always float above the screen. */
+.classroom-popover {position:fixed;z-index:160;display:flex;flex-direction:column;gap:3px;width:248px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 100px);overflow:auto;padding:7px;border:1px solid var(--border);border-radius:10px;background:var(--sidebar-bg);color:var(--text);box-shadow:var(--shadow)}
+.classroom-popover button {display:flex;align-items:center;gap:9px;width:100%;min-height:40px;padding:9px 11px;background:transparent;color:var(--text-dim);border:0;border-radius:6px;text-align:left;font-size:13px;cursor:pointer}
+.classroom-popover button:hover {background:var(--panel-bg);color:var(--text)}
+.classroom-popover button svg {width:17px;height:17px}
+.classroom-popover hr {border:0;border-top:1px solid var(--border);margin:5px 4px}
+.classroom-popover h2,.classroom-popover h3 {font-size:14px;font-weight:600;padding:7px 10px;margin:0}
+.classroom-menu-heading {color:var(--text-muted);font-size:12px;padding:6px 11px 0}
+#classroom-menu-name {color:var(--text);font-size:14px;font-weight:600;padding:2px 11px 10px;overflow-wrap:anywhere;border-bottom:1px solid var(--border);margin-bottom:3px}
+.classroom-popover .identity-btn {max-width:none}
+.classroom-popover .menu-danger,.classroom-popover [data-action=logout] {color:var(--red)}
+#classroom-menu {top:calc(var(--topbar-h) - 4px);left:64px}
+#classroom-zoom-menu {bottom:calc(var(--bottombar-h) - 5px);left:50%;transform:translateX(-50%);width:208px}
+#classroom-zoom-menu .btn {justify-content:flex-start}
+
+/* Discussion retains the full text, file, code and moderation features. */
+#chat-messages {padding:18px 16px;gap:12px;min-height:0}
+#chat-messages:empty:before {content:"这里是课堂讨论区\A 不懂就问，和老师同学一起交流";white-space:pre-line;text-align:center;color:var(--text-muted);font-size:13px;line-height:2;padding-top:40px}
+.msg-content {font-size:14px;line-height:1.7;color:var(--text);overflow-wrap:anywhere}
 .msg-sender,.msg-sender.is-host {color:var(--text)}
-.chat-footer {padding:12px 16px;background:#fff;border-color:var(--border)}
+.chat-msg.is-me .msg-avatar {background:var(--accent-glow);border-color:var(--border);color:var(--accent)}
+.chat-msg.is-me .msg-content {background:var(--accent-glow);border-color:var(--border)}
+.chat-footer {padding:12px 16px;background:var(--sidebar-bg);border-color:var(--border)}
 .chat-tool {min-width:36px;min-height:36px;color:var(--text-dim)}
 #chat-input {background:var(--panel-bg);color:var(--text);font-size:14px;min-height:44px;padding:11px}
 .chat-send-btn {width:44px;min-height:44px}
 .chat-footer-hint {font-size:11px;color:var(--text-muted);padding:8px 0 0}
-.msg-actions {background:#fff;box-shadow:0 3px 10px #0001}
-.modal-backdrop {background:#f3f6fbeF;backdrop-filter:blur(6px)}
-.modal-box {width:440px;max-width:calc(100vw - 32px);padding:36px;text-align:left;background:#fff;border:1px solid var(--border);border-radius:18px;box-shadow:0 20px 70px #21335212}
-.modal-logo {font-size:20px;justify-content:flex-start;margin-bottom:20px;color:var(--text)}
-.modal-logo svg {color:var(--accent)}
-.modal-subtitle {font-size:15px;line-height:1.8;color:var(--text-dim);margin-bottom:24px}
-.modal-field label {font-size:14px;color:var(--text);display:block;margin-bottom:8px}
-.modal-input {min-height:48px;border:1px solid #d2d9e5}
-.modal-btn {min-height:48px;font-size:15px;border-radius:8px}
-.modal-btn.gold,.modal-btn.accent {background:var(--accent);color:#fff}
-.modal-hint {font-size:12px;line-height:1.8;color:var(--text-muted);text-align:center;margin-top:16px}
-.role-chip.host {background:var(--accent-glow);color:var(--accent);border:0;font-size:13px}
-.full-overlay {background:var(--bg);gap:18px}
-.full-overlay h2 {font-size:26px;font-weight:600}
-.full-overlay p {line-height:1.9;max-width:400px}
-.rejoin-btn {border:0;border-radius:8px;padding:12px 28px;background:var(--accent);color:#fff;cursor:pointer;font-size:14px}
-.perm-label,.perm-select {font-size:12px}
-.perm-select {min-height:36px;background:#fff;color:var(--text)}
-.sw {width:38px;height:24px;flex-shrink:0}
-.sw-track:before {height:18px;width:18px;top:3px}
-.sw input:focus-visible+.sw-track {outline:3px solid var(--accent);outline-offset:3px}
-[data-role=student] .teacher-only {display:none!important}
-[data-role=teacher] #btn-pause {display:none!important}
-#teacher-actions {display:flex;gap:6px;flex-shrink:0}
-#teacher-hide-btn {background:#fff4e5;color:#884c00;border-color:#edc48a}
-#teacher-privacy-banner {flex-shrink:0;margin:0 0 10px;background:#fff1db;color:#7b4300;border:1px solid #edc48a;border-radius:8px;padding:10px 18px;font-weight:600}
-#teacher-toast {position:fixed;bottom:88px;left:50%;transform:translateX(-50%);z-index:1200;background:#172b4d;color:#fff;max-width:90vw;padding:12px 20px;border-radius:8px;box-shadow:0 4px 20px #172b4d30}
-#teacher-toast.error {background:#9d2929}
-.teacher-dialog {width:min(680px,94vw);max-width:94vw;max-height:85vh;overflow-y:auto;text-align:left}
-.teacher-dialog h2 {font-size:20px;margin:0 0 12px}
-.teacher-dialog h3 {font-size:16px;margin:18px 0 8px}
-.teacher-dialog p {font-size:13px;color:var(--text-dim);margin:10px 0}
-.teacher-dialog label {display:block;margin:12px 0;font-size:14px}
-.teacher-dialog input:not([type=checkbox]) {border:1px solid var(--border);border-radius:6px;padding:8px;margin-left:8px;max-width:100%;background:#fff;color:var(--text)}
-.teacher-dialog button {border:1px solid var(--border);border-radius:6px;padding:8px 12px;background:#fff;color:var(--text);cursor:pointer}
-.teacher-dialog-heading {display:flex;align-items:center;justify-content:space-between;gap:12px}
-.teacher-command {display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;text-align:left;margin:5px 0}
-.teacher-command.selected {background:var(--accent-glow);border-color:var(--accent)}
-.teacher-command[aria-disabled=true] {color:var(--text-muted)}
-.teacher-command kbd {white-space:nowrap;font-size:12px}
-#teacher-command-results {max-height:48vh;overflow:auto}
-.teacher-binding {display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
-.teacher-binding span {flex:1}
-#teacher-settings-btn {margin:16px 20px}
-#teacher-new-confirm {background:var(--accent);color:white}
-[data-role=student] .mon-btn .res {display:none}
-[data-role=student] #fps-val,[data-role=student] #q-bar {display:none}
-[data-role=student] #fps-bar {font-size:0}
-[data-role=student] #conn-state {font-size:12px}
-@media(max-width:1100px) {#topbar{padding:0 16px;gap:10px}#live-badge{display:none}#stage{padding:0 18px}.stage-footer span:last-child{display:none}#fps-bar{font-size:0}#conn-state{font-size:12px}#logo{font-size:16px}}
-@media(max-width:760px) {
-  :root {--topbar-h:60px}
-  #topbar{height:60px;min-height:60px;padding:0 12px;gap:8px}#logo{font-size:15px}#logo svg{display:none}
-  #session-name,#host-topbar-badge,#viewer-badge{display:none!important}
-  #logo{font-size:0}#logo:after{content:"云课堂";font-size:15px}
-  .identity-btn{max-width:78px;font-size:12px;padding:10px 0}
-  #chat-toggle-btn{margin-left:auto}.icon-btn{min-height:40px;padding:7px 10px}
-  #stage{padding:0 12px}.stage-heading{padding:16px 0 12px}.stage-heading h1{font-size:18px}.eyebrow{font-size:11px}
-  #screen-area{padding:8px}.stage-footer{font-size:11px;padding:10px 0}.stage-footer span:last-child{display:none}
-  #sidebar{position:fixed;top:60px;bottom:72px;left:0;z-index:100;width:min(85vw,300px)!important;box-shadow:12px 0 40px #23374a22;max-width:none}
-  #sidebar.collapsed{width:0!important;box-shadow:none}#sidebar-resize-handle{display:none}
-  #chat-panel{position:fixed;right:0;top:60px;bottom:72px;width:min(100vw,380px)!important;max-width:none;min-width:0;z-index:110;box-shadow:-12px 0 40px #23374a22}
-  #chat-resize-handle{display:none}#bottombar{padding:10px 12px;gap:6px;overflow-x:auto}
-  .btn{padding:8px 12px;min-height:44px}#fps-bar,.sep{display:none}
-  .modal-box{padding:28px}.modal-logo{font-size:19px}
-}
-@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
-
-/* Discussion: compact status row and an on-demand member drawer. */
+.msg-actions {background:var(--sidebar-bg);box-shadow:var(--shadow)}
+#chat-unread-badge {top:-4px;right:-3px;font-size:10px;min-width:18px;height:18px;border-radius:9px}
 #discussion-controls {padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;flex-shrink:0}
 #discussion-teacher-controls {flex-shrink:0}
 #discussion-mute-all {display:flex;align-items:center;gap:8px;padding:6px 0;border:0;background:transparent;color:var(--text-dim);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
 .discussion-switch {position:relative;width:30px;height:18px;border-radius:12px;background:#8592a4;transition:background .15s}
-.discussion-switch:after {content:"";position:absolute;left:3px;top:3px;width:12px;height:12px;border-radius:50%;background:white;transition:transform .15s}
-#discussion-mute-all[aria-checked=true] .discussion-switch {background:#b66a12}
+.discussion-switch:after {content:"";position:absolute;left:3px;top:3px;width:12px;height:12px;border-radius:50%;background:#fff;transition:transform .15s}
+#discussion-mute-all[aria-checked=true] .discussion-switch {background:var(--amber)}
 #discussion-mute-all[aria-checked=true] .discussion-switch:after {transform:translateX(12px)}
 #discussion-mute-all:disabled,#discussion-member-list button:disabled {opacity:.55;cursor:wait}
 .discussion-status-row {display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:28px}
 #discussion-status {color:var(--text-dim);line-height:1.6}
-#discussion-status:before {content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#388568;margin-right:7px;vertical-align:middle}
-.is-muted #discussion-status {color:#94530c}
-.is-muted #discussion-status:before {background:#b66a12}
+#discussion-status:before {content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:7px;vertical-align:middle}
+.is-muted #discussion-status {color:var(--amber)}
+.is-muted #discussion-status:before {background:var(--amber)}
 #discussion-member-open {border:0;background:transparent;padding:5px 0 5px 8px;color:var(--text-dim);font:inherit;cursor:pointer;white-space:nowrap}
 #discussion-member-open span {margin-left:4px}
-#discussion-member-settings {position:fixed;inset:0 0 0 auto;margin:0;width:min(380px,100vw);max-width:100vw;height:100dvh;max-height:100dvh;box-sizing:border-box;padding:24px 20px;border:0;border-left:1px solid var(--border);background:#fff;color:var(--text);box-shadow:-12px 0 40px #23374a22;font-size:13px}
+#discussion-member-settings {position:fixed;inset:0 0 0 auto;margin:0;width:min(380px,100vw);max-width:100vw;height:100dvh;max-height:100dvh;box-sizing:border-box;padding:24px 20px;border:0;border-left:1px solid var(--border);background:var(--sidebar-bg);color:var(--text);box-shadow:var(--shadow);font-size:13px}
 #discussion-member-settings[open] {display:flex;flex-direction:column;gap:16px}
 #discussion-member-settings::backdrop {background:#172b4d33}
 .discussion-drawer-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0}
 .discussion-drawer-heading h2 {margin:0;font-size:17px;font-weight:600}
 #discussion-member-settings button {font:inherit;cursor:pointer}
 #discussion-member-close {border:0;background:transparent;color:var(--text-dim);width:36px;height:36px;font-size:24px!important;border-radius:6px}
-#discussion-member-rule {margin:0;padding:10px 12px;background:#fff6e9;color:#94530c;font-size:12px;line-height:1.7;border-radius:8px}
+#discussion-member-rule {margin:0;padding:10px 12px;background:var(--amber-bg);color:var(--amber);font-size:12px;line-height:1.7;border-radius:8px}
 #discussion-member-search {width:100%;box-sizing:border-box;min-height:40px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-bg);color:var(--text);font:inherit;flex-shrink:0}
 .discussion-filters {display:flex;gap:6px;flex-shrink:0}
 .discussion-filters button {padding:6px 12px;border:1px solid transparent;background:transparent;color:var(--text-dim);border-radius:6px}
@@ -181,13 +202,118 @@ button:disabled {opacity:.45;cursor:not-allowed}
 .discussion-member {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
 .discussion-member-name {min-width:0;overflow-wrap:anywhere}
 .discussion-member-actions {display:flex;align-items:center;gap:8px;flex-shrink:0}
-.discussion-muted-badge {font-size:11px;color:#94530c}
-#discussion-member-list button {padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text-dim);white-space:nowrap;min-height:34px}
+.discussion-muted-badge {font-size:11px;color:var(--amber)}
+#discussion-member-list button {padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--sidebar-bg);color:var(--text-dim);white-space:nowrap;min-height:36px}
 .discussion-empty {text-align:center;color:var(--text-muted);padding:24px 0}
 #discussion-error {color:var(--red);line-height:1.6}
 #discussion-feedback {color:var(--text-dim);line-height:1.6}
 #discussion-error:empty,#discussion-feedback:empty {display:none}
-#discussion-controls [hidden],#discussion-teacher-controls[hidden] {display:none!important}
-#discussion-mute-all:focus-visible,#discussion-controls button:focus-visible {outline:2px solid var(--accent);outline-offset:3px}
-#screen-access-panel[hidden] {display:none!important}
-#teacher-shortcut-tooltip {position:fixed;z-index:1500;max-width:calc(100vw - 16px);padding:8px 12px;border-radius:8px;background:#172b4d;color:#fff;font-size:12px;line-height:1.6;box-shadow:0 4px 16px #172b4d30;pointer-events:none;overflow-wrap:anywhere}
+
+/* Login, confirmation and shortcut dialogs remain explicit and readable. */
+.modal-backdrop {background:#edf1f7e8;backdrop-filter:blur(5px)}
+.modal-box {width:440px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 40px);overflow:auto;padding:32px;text-align:left;background:var(--sidebar-bg);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow)}
+.modal-logo {font-size:20px;justify-content:flex-start;margin-bottom:20px;color:var(--text)}
+.modal-logo svg {color:var(--accent)}
+.modal-subtitle {font-size:15px;line-height:1.8;color:var(--text-dim);margin-bottom:24px}
+.modal-field label {font-size:14px;color:var(--text);display:block;margin-bottom:8px;letter-spacing:0;text-transform:none}
+.modal-input {min-height:46px;border:1px solid var(--border)}
+.modal-btn {min-height:46px;font-size:14px;border-radius:8px}
+.modal-btn.gold,.modal-btn.accent {background:var(--accent);color:var(--on-accent)}
+.modal-hint {font-size:12px;line-height:1.8;color:var(--text-muted);text-align:center;margin-top:16px}
+.role-chip.host {background:var(--accent-glow);color:var(--accent);border:0;font-size:13px}
+.full-overlay {background:var(--bg);gap:18px}
+.full-overlay h2 {font-size:24px;font-weight:600}
+.full-overlay p {line-height:1.9;max-width:400px}
+.rejoin-btn {border:0;border-radius:8px;padding:12px 28px;background:var(--accent);color:var(--on-accent);cursor:pointer;font-size:14px}
+.perm-label,.perm-select {font-size:12px}
+.perm-select {min-height:36px;background:var(--sidebar-bg);color:var(--text)}
+[data-role=student] .teacher-only {display:none!important}
+[data-role=teacher] #btn-pause {display:none!important}
+[data-role=student] .mon-btn .res {display:none}
+[data-role=student] #fps-val,[data-role=student] #q-bar {display:none}
+#teacher-privacy-banner {flex-shrink:0;margin:0 0 10px;background:var(--amber-bg);color:var(--amber);border:1px solid var(--border);border-radius:8px;padding:9px 16px;font-size:13px;font-weight:500;text-align:center}
+#teacher-toast {position:fixed;bottom:calc(var(--bottombar-h) + 8px);left:50%;transform:translateX(-50%);z-index:1200;background:#172b4d;color:#fff;max-width:calc(100vw - 32px);padding:11px 18px;border-radius:8px;box-shadow:var(--shadow);overflow-wrap:anywhere}
+#teacher-toast.error {background:#9d2929}
+.teacher-dialog {width:min(680px,94vw);max-width:94vw;max-height:85dvh;overflow-y:auto;text-align:left}
+.teacher-dialog h2 {font-size:20px;margin:0 0 12px}
+.teacher-dialog h3 {font-size:16px;margin:18px 0 8px}
+.teacher-dialog p {font-size:13px;color:var(--text-dim);margin:10px 0}
+.teacher-dialog label {display:block;margin:12px 0;font-size:14px}
+.teacher-dialog input:not([type=checkbox]) {border:1px solid var(--border);border-radius:6px;padding:8px;margin-left:8px;max-width:100%;background:var(--sidebar-bg);color:var(--text)}
+.teacher-dialog button {border:1px solid var(--border);border-radius:6px;padding:8px 12px;background:var(--sidebar-bg);color:var(--text);cursor:pointer}
+.teacher-dialog-heading {display:flex;align-items:center;justify-content:space-between;gap:12px}
+.teacher-command {display:flex;width:100%;align-items:center;justify-content:space-between;gap:12px;text-align:left;margin:5px 0}
+.teacher-command.selected {background:var(--accent-glow);border-color:var(--accent)}
+.teacher-command[aria-disabled=true] {color:var(--text-muted)}
+.teacher-command kbd {white-space:nowrap;font-size:12px}
+#teacher-command-results {max-height:48vh;overflow:auto}
+.teacher-binding {display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.teacher-binding span {flex:1;min-width:100px}
+#teacher-new-confirm {background:var(--accent);color:var(--on-accent)}
+#teacher-shortcut-tooltip {position:fixed;z-index:1500;max-width:calc(100vw - 16px);padding:8px 12px;border-radius:8px;background:#172b4d;color:#fff;font-size:12px;line-height:1.6;box-shadow:var(--shadow);pointer-events:none;overflow-wrap:anywhere}
+
+/* Narrow screens keep every action visible by wrapping, rather than scrolling. */
+@media(max-width:760px) {
+  :root {--topbar-h:58px;--bottombar-h:112px}
+  #topbar {padding:0 14px;gap:7px}
+  #logo {width:28px}
+  #logo svg {width:28px;height:28px;padding:5px;border-radius:8px}
+  #classroom-title {font-size:14px}
+  #classroom-menu-btn {padding:7px 4px;min-width:25px}
+  .icon-btn,#viewer-badge,#classroom-invite-btn,#classroom-settings-btn {padding:7px 8px;min-height:38px;font-size:12px;gap:5px}
+  #classroom-settings-btn {width:36px;padding:8px}
+  .identity-btn {max-width:90px;padding:8px 6px;font-size:12px}
+  #stage {padding:7px 14px 0}
+  .stage-footer {font-size:11px;gap:10px;min-height:35px;padding-top:7px}
+  #stage-status,#conn-state {font-size:11px}
+  #bottombar {bottom:12px;max-width:calc(100vw - 24px);padding:7px;gap:4px;min-height:56px}
+  .btn,#bottombar .icon-btn {min-height:40px;padding:8px 10px;font-size:12px;gap:5px}
+  #sidebar,#chat-panel {inset:calc(var(--topbar-h) + 4px) 12px calc(var(--bottombar-h) + 4px) auto;width:min(360px,calc(100vw - 24px))!important;max-height:calc(100dvh - var(--topbar-h) - var(--bottombar-h) - 8px);border-radius:10px}
+  #classroom-menu {left:12px}
+  #classroom-zoom-menu {bottom:calc(var(--bottombar-h) - 2px)}
+  .modal-box {padding:24px}
+  .teacher-dialog input:not([type=checkbox]) {margin:7px 0 0;width:100%}
+  .teacher-dialog-heading {align-items:flex-start}
+  #teacher-privacy-banner {padding:8px 12px;font-size:12px;margin-bottom:7px}
+}
+@media(max-width:520px) {
+  :root {--bottombar-h:124px}
+  #teacher-command-btn {min-width:42px}
+  #classroom-zoom-btn>span {display:none}
+  #classroom-zoom-btn:after {content:"缩放"}
+  #teacher-help-btn {min-width:32px;padding:7px}
+  #bottombar {width:max-content;max-width:calc(100vw - 24px)}
+  #chat-toggle-btn {padding-left:10px;border-left:0;border-radius:7px}
+  #teacher-hide-btn,#btn-pause {padding-left:10px;padding-right:10px}
+}
+@media(max-width:420px) {
+  #topbar {padding:0 12px;gap:5px}
+  #viewer-badge {font-size:0;padding:7px;gap:5px}
+  #viewer-count {font-size:12px}
+  #viewer-badge span:not(#viewer-count) {display:none}
+  #classroom-invite-btn {font-size:0;padding:8px;width:34px}
+  #classroom-invite-btn>span {display:none}
+  #classroom-invite-btn svg {width:18px;height:18px}
+  #classroom-title {max-width:118px}
+  .classroom-top-actions {gap:3px}
+  #classroom-student-identity .identity-btn {max-width:72px;padding-left:4px;padding-right:4px}
+  #stage {padding-left:10px;padding-right:10px}
+  .stage-footer {gap:7px;min-height:40px}
+  #sidebar,#chat-panel {right:8px;width:calc(100vw - 16px)!important}
+  .classroom-drawer-heading,.chat-header {padding:10px 14px}
+  .s-section {padding:16px}
+  #chat-messages {padding:14px 12px}
+  .chat-footer {padding:10px 12px}
+  #discussion-controls {padding-left:12px;padding-right:12px}
+  .btn,#bottombar .icon-btn {padding-left:8px;padding-right:8px}
+  .btn svg,#bottombar .icon-btn svg {width:15px;height:15px}
+  .teacher-dialog {max-width:calc(100vw - 20px);padding:20px}
+}
+@media(max-height:560px) and (min-width:521px) {
+  :root {--topbar-h:52px;--bottombar-h:76px}
+  #stage {padding-top:0}
+  #bottombar {bottom:10px;min-height:52px;padding:6px}
+  .stage-footer {min-height:28px;padding-top:4px}
+  #sidebar,#chat-panel {bottom:calc(var(--bottombar-h) + 2px)}
+}
+@media(prefers-reduced-motion:reduce) {*,*:before,*:after {animation:none!important;transition:none!important;scroll-behavior:auto!important}}
