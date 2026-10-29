@@ -265,7 +265,7 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Old ready marker found. Run stop.cmd and start.cmd.' }
             & $venvPython lan.py open-teacher
         } else {
-            & $venvPython lan.py start --open-browser
+            & $venvPython lan.py launch --open-browser
             if ($LASTEXITCODE -ne 0) { throw 'Service startup failed. Check the message above.' }
         }
     }

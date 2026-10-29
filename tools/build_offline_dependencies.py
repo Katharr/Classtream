@@ -21,13 +21,16 @@ PIP_HASH = "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
 INSTRUCTIONS = """Classtream Windows x64 离线依赖包（Python 3.14）
 
 放在哪里：
+主程序 ZIP 不包含依赖，默认由 start.cmd 首次联网安装。
+不能联网时，使用本独立附件，按以下步骤放入程序目录。
 1. 先停止正在进行的安装，完整解压本依赖 ZIP。
 2. 把 offline 文件夹和 install.ps1 一起复制到原来含 install.ps1、
    requirements-lock.txt 的目录；同名 install.ps1 选择替换。
    - GitHub 仓库下载版：放进 Classtream-main\\windows-lan\\。
+   - Win64 发布版：放进 Classtream-LAN\\windows-lan\\。
    - 轻量同事分享版：放进 Classtream-LAN\\。
    不要只把 ZIP 文件放进去，也不要多套一层 offline\\offline。
-3. 双击原来的 install.cmd（仓库根目录的入口也可以）。
+3. 双击原来的 start.cmd，首次会自动安装；也可运行 install.cmd。
    出现 OFFLINE MODE 表示已校验并使用本地依赖，不下载 Python/PyPI/VC++。
 
 正确的结构：

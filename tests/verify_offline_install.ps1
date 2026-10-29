@@ -1,13 +1,19 @@
-param([Parameter(Mandatory = $true)][string]$DependencyZip)
+param([Parameter(Mandatory = $true)][string]$DependencyZip, [string]$ProjectZip)
 $ErrorActionPreference = 'Stop'
 $archive = (Resolve-Path -LiteralPath $DependencyZip).Path
 $repository = Split-Path -Parent $PSScriptRoot
-$target = Join-Path ([IO.Path]::GetTempPath()) ('Classtream offline test ' + [guid]::NewGuid().ToString('N'))
+$target = Join-Path $repository ('.artifacts\offline-install-' + [guid]::NewGuid().ToString('N'))
 $proxyNames = @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY')
 $oldProxies = @{}
+$oldHome = $env:CLASSTREAM_HOME
 foreach ($name in $proxyNames) { $oldProxies[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 try {
-    Expand-Archive -LiteralPath $archive -DestinationPath $target
+    if ($ProjectZip) {
+        Expand-Archive -LiteralPath (Resolve-Path -LiteralPath $ProjectZip).Path -DestinationPath $target
+        $target = Join-Path $target 'Classtream-LAN\windows-lan'
+    }
+    Expand-Archive -LiteralPath $archive -DestinationPath $target -Force
+    $env:CLASSTREAM_HOME = $target
     $lock = Join-Path $target 'requirements-lock.txt'
     Copy-Item -LiteralPath (Join-Path $repository 'windows-lan/requirements-lock.txt') -Destination $lock
     foreach ($name in $proxyNames) { [Environment]::SetEnvironmentVariable($name, 'http://127.0.0.1:9', 'Process') }
@@ -21,7 +27,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Fresh environment imports or pinned versions failed.' }
     $log = [IO.File]::ReadAllText((Join-Path $target 'runtime/install.log'))
     if ($log -notmatch 'OFFLINE MODE' -or $log -match 'Downloading https?://') { throw 'Expected a verified offline installation.' }
-    if ((Test-Path -LiteralPath (Join-Path $target 'config.json')) -or (Test-Path -LiteralPath (Join-Path $target 'runtime/data'))) {
+    if ((-not $ProjectZip -and (Test-Path -LiteralPath (Join-Path $target 'config.json'))) -or (Test-Path -LiteralPath (Join-Path $target 'runtime/data'))) {
         throw 'DependenciesOnly unexpectedly configured classroom data.'
     }
     $wheel = Get-ChildItem -LiteralPath (Join-Path $target 'offline/wheels') -File | Select-Object -First 1
@@ -36,5 +42,6 @@ try {
     Write-Host 'PASS: actual installer used local wheels without pip cache; damaged files and mismatched locks rejected.'
     Write-Host ('Test artifacts: ' + $target)
 } finally {
+    $env:CLASSTREAM_HOME = $oldHome
     foreach ($name in $proxyNames) { [Environment]::SetEnvironmentVariable($name, $oldProxies[$name], 'Process') }
 }
