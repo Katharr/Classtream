@@ -33,9 +33,7 @@ const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
         await page.mouse.up({ button });
       };
       const zoomClick = async id => {
-        if (!await page.locator(id).isVisible()) await page.locator('#classroom-zoom-btn').click();
         await page.locator(id).click();
-        await page.keyboard.press('Escape');
       };
       await drag(30, 30);
       assert.deepEqual(await translation(), [0, 0], 'normal size stays centered');

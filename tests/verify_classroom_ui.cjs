@@ -11,9 +11,6 @@ const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
   fs.mkdirSync(output,{recursive:true});
   const errors=[];
   const attach = page => page.on('pageerror',e=>errors.push(e.message));
-  const openZoom = async page => {
-    if (!await page.locator('#btn-zoom-in').isVisible()) await page.locator('#classroom-zoom-btn').click();
-  };
   const stageBounds = page => page.locator('#screen-area').boundingBox();
   const sameStage = (before, after) => {
     for (const key of ['x','y','width','height']) assert.ok(Math.abs(before[key]-after[key])<1,key+' changes when a drawer opens');
@@ -21,7 +18,7 @@ const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
   const fitsViewport = async page => {
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     const width=page.viewportSize().width;
-    for (const selector of ['#btn-fullscreen','#classroom-zoom-btn','#btn-screenshot','#chat-toggle-btn']) {
+    for (const selector of ['#btn-fullscreen','#btn-zoom-in','#btn-zoom-out','#btn-zoom-reset','#btn-screenshot','#chat-toggle-btn']) {
       const box=await page.locator(selector).boundingBox();
       assert.ok(box && box.x>=0 && box.x+box.width<=width,selector+' is outside the viewport');
     }
@@ -108,10 +105,8 @@ const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
     assert.equal(await student.locator('#pause-label').innerText(),'继续观看');
     await student.locator('#btn-pause').click();
     assert.equal(await student.locator('#pause-label').innerText(),'暂停画面');
-    await openZoom(student);
     await student.locator('#btn-zoom-in').click();
     assert.ok((await student.locator('#screen-img').getAttribute('style')).includes('1.25'));
-    await openZoom(student);
     await student.locator('#btn-zoom-reset').click();
     await student.keyboard.press('Escape');
     await student.locator('#chat-toggle-btn').click();

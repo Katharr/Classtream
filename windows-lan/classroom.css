@@ -71,7 +71,7 @@ svg {flex-shrink:0}
 #teacher-hide-btn[aria-pressed=true] {background:var(--amber);color:#fff;border-color:var(--amber)}
 #btn-fullscreen {order:1;background:transparent;border-color:transparent;color:var(--text-dim)}
 #btn-fullscreen:hover {background:var(--panel-bg);color:var(--text)}
-#classroom-zoom-btn {order:2}
+.classroom-zoom-controls {order:2;display:flex;align-items:center;gap:3px;flex-shrink:0}
 #btn-screenshot {order:3}
 #chat-toggle-btn {order:4;position:relative;margin-left:0;background:transparent;color:var(--text-dim);border-color:transparent;border-left-color:var(--border);border-radius:0 7px 7px 0;padding-left:15px}
 #chat-toggle-btn[aria-expanded=true] {background:var(--accent-glow);color:var(--accent);border-color:transparent}
@@ -153,8 +153,6 @@ kbd {font-size:11px}
 .classroom-popover .identity-btn {max-width:none}
 .classroom-popover .menu-danger,.classroom-popover [data-action=logout] {color:var(--red)}
 #classroom-menu {top:calc(var(--topbar-h) - 4px);left:64px}
-#classroom-zoom-menu {bottom:calc(var(--bottombar-h) - 5px);left:50%;transform:translateX(-50%);width:208px}
-#classroom-zoom-menu .btn {justify-content:flex-start}
 
 /* Discussion retains the full text, file, code and moderation features. */
 #chat-messages {padding:18px 16px;gap:12px;min-height:0}
@@ -270,17 +268,14 @@ kbd {font-size:11px}
   .btn,#bottombar .icon-btn {min-height:40px;padding:8px 10px;font-size:12px;gap:5px}
   #sidebar,#chat-panel {inset:calc(var(--topbar-h) + 4px) 12px calc(var(--bottombar-h) + 4px) auto;width:min(360px,calc(100vw - 24px))!important;max-height:calc(100dvh - var(--topbar-h) - var(--bottombar-h) - 8px);border-radius:10px}
   #classroom-menu {left:12px}
-  #classroom-zoom-menu {bottom:calc(var(--bottombar-h) - 2px)}
   .modal-box {padding:24px}
   .teacher-dialog input:not([type=checkbox]) {margin:7px 0 0;width:100%}
   .teacher-dialog-heading {align-items:flex-start}
   #teacher-privacy-banner {padding:8px 12px;font-size:12px;margin-bottom:7px}
 }
 @media(max-width:520px) {
-  :root {--bottombar-h:124px}
+  :root {--bottombar-h:164px}
   #teacher-command-btn {min-width:42px}
-  #classroom-zoom-btn>span {display:none}
-  #classroom-zoom-btn:after {content:"缩放"}
   #teacher-help-btn {min-width:32px;padding:7px}
   #bottombar {width:max-content;max-width:calc(100vw - 24px)}
   #chat-toggle-btn {padding-left:10px;border-left:0;border-radius:7px}

@@ -124,17 +124,16 @@ def _focus_layout(template):
                       template, count=1, flags=re.S)
     template = _swap(template, '<div class="chat-header">',
                      '<div class="chat-header"><button id="classroom-chat-close" class="icon-btn" aria-label="关闭课堂讨论">×</button>')
-    # The dock holds common actions; the original zoom buttons live in one popover.
+    # Keep all three zoom actions visible together in the dock.
     zoom = '\n'.join(button(name) for name in ('btn-zoom-in', 'btn-zoom-out', 'btn-zoom-reset'))
     for name in ('btn-zoom-in', 'btn-zoom-out', 'btn-zoom-reset'):
         template = template.replace(button(name), '')
     zoom = zoom.replace('>1:1</button>', '>适应窗口</button>')
     template = _swap(template, '</div><!-- /bottombar -->', f'''
-  <button id="classroom-zoom-btn" class="btn" aria-expanded="false" aria-controls="classroom-zoom-menu" aria-label="缩放画面"><span aria-hidden="true">⛶</span><span id="classroom-zoom-label">适应窗口</span><span aria-hidden="true">⌄</span></button>
+  <div class="classroom-zoom-controls" role="group" aria-label="画面缩放">{zoom}</div>
   {chat}
   <button id="classroom-more-btn" class="btn" aria-controls="sidebar" aria-expanded="false">更多</button>
-</div><!-- /bottombar -->
-<div id="classroom-zoom-menu" class="classroom-popover" role="region" aria-label="画面缩放" hidden>{zoom}</div>''')
+</div><!-- /bottombar -->''')
     conn = re.search(r'<span id="conn-state".*?</span>', template, re.S)[0]
     template = template.replace(conn, '')
     template = _swap(template, '<span id="stage-status" role="status">正在连接</span>',

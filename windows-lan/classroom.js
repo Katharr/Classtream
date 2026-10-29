@@ -10,7 +10,6 @@ initTeacherShortcuts();
 const sidebar = $('sidebar');
 const chat = $('chat-panel');
 const menu = $('classroom-menu');
-const zoomMenu = $('classroom-zoom-menu');
 let drawerTrigger = null;
 sidebar.classList.add('collapsed');
 
@@ -51,7 +50,7 @@ $('chat-messages').setAttribute('aria-label', '课堂讨论消息');
 chat.setAttribute('role', 'region'); chat.setAttribute('aria-label', '课堂讨论');
 
 function closeMenus(restore = false) {
-  for (const [element, button] of [[menu, $('classroom-menu-btn')], [zoomMenu, $('classroom-zoom-btn')]]) {
+  for (const [element, button] of [[menu, $('classroom-menu-btn')]]) {
     if (!element.hidden) {
       element.hidden = true; button.setAttribute('aria-expanded', 'false');
       if (restore) button.focus();
@@ -91,7 +90,6 @@ function toggleMenu(element, button) {
   }
 }
 $('classroom-menu-btn').addEventListener('click', () => toggleMenu(menu, $('classroom-menu-btn')));
-$('classroom-zoom-btn').addEventListener('click', () => toggleMenu(zoomMenu, $('classroom-zoom-btn')));
 $('classroom-settings-btn').addEventListener('click', () => togglePanel('settings', $('classroom-settings-btn')));
 $('classroom-more-btn').addEventListener('click', () => togglePanel('settings', $('classroom-more-btn')));
 $('viewer-badge').addEventListener('click', () => togglePanel('members', $('viewer-badge')));
@@ -136,16 +134,9 @@ $('chat-toggle-btn').setAttribute('aria-controls', 'chat-panel');
 syncPanels();
 
 document.addEventListener('click', e => {
-  if (!e.target.closest('#classroom-menu,#classroom-menu-btn,#classroom-zoom-menu,#classroom-zoom-btn')) closeMenus();
+  if (!e.target.closest('#classroom-menu,#classroom-menu-btn')) closeMenus();
   if (e.target.closest('#screen-area')) { closeSidebar(); closeChat(); }
 });
-zoomMenu.addEventListener('click', e => { if (e.target.closest('button')) closeMenus(true); });
-function updateZoom() {
-  $('classroom-zoom-label').textContent = state.zoom === 1 ? '适应窗口' : Math.round(state.zoom * 100) + '%';
-}
-new MutationObserver(updateZoom).observe($('screen-img'), {attributes:true, attributeFilter:['style']});
-updateZoom();
-
 const identity = $('identity-btn');
 function updateIdentity() {
   identity.textContent = teacher ? '退出登录' : state.myName || '正在分配昵称';
@@ -197,7 +188,7 @@ document.addEventListener('keydown', e => {
   if (e.defaultPrevented) return;
   const dialog = [...document.querySelectorAll('.modal-backdrop:not(.hidden),dialog[open]')].at(-1);
   if (!dialog && e.key === 'Escape') {
-    if (!menu.hidden || !zoomMenu.hidden) { e.preventDefault(); closeMenus(true); }
+    if (!menu.hidden) { e.preventDefault(); closeMenus(true); }
     else if (!sidebar.classList.contains('collapsed')) { e.preventDefault(); closeSidebar(true); }
     else if (!chat.classList.contains('hidden') && $('chat-code-panel').classList.contains('hidden') && $('chat-emoji-picker').classList.contains('hidden') && $('chat-reply-bar').classList.contains('hidden')) { e.preventDefault(); closeChat(true); }
   }
