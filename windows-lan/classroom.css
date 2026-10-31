@@ -6,7 +6,7 @@
   --accent:#245fe4; --accent-glow:#edf3ff; --green:#197852; --red:#b74444;
   --gold:var(--accent); --gold-glow:var(--accent-glow);
   --amber:#8c570b; --amber-bg:#fff3df; --on-accent:#fff;
-  --shadow:0 10px 36px #23314b16; --sidebar-w:360px;
+  --shadow:0 10px 36px #23314b16; --sidebar-w:360px; --classroom-rail-w:340px;
   --topbar-h:64px; --bottombar-h:92px;
 }
 html,body {height:100%;height:100dvh;overflow:hidden}
@@ -29,11 +29,8 @@ svg {flex-shrink:0}
 #classroom-menu-btn {display:inline-flex;align-items:center;flex-shrink:1;max-width:100%;padding:8px;border:0;background:transparent;color:var(--text-dim);border-radius:8px;cursor:pointer;min-height:36px;min-width:0;overflow:hidden}
 #classroom-menu-btn>span:last-child {flex-shrink:0}
 #classroom-menu-btn svg {width:15px;height:15px}
-.icon-btn,#viewer-badge,#classroom-invite-btn,#classroom-settings-btn {display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 11px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-dim);font-size:13px;line-height:1.4;white-space:nowrap;cursor:pointer}
-.icon-btn:hover,#viewer-badge:hover,#classroom-invite-btn:hover,#classroom-settings-btn:hover,#classroom-menu-btn:hover {background:var(--sidebar-bg);color:var(--text)}
-#viewer-badge {margin-left:auto;font-weight:400}
-#viewer-badge svg,#classroom-invite-btn svg,#classroom-settings-btn svg {width:17px;height:17px}
-#viewer-badge.bump {background:var(--accent-glow)}
+.icon-btn,#classroom-settings-btn {display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;padding:8px 11px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text-dim);font-size:13px;line-height:1.4;white-space:nowrap;cursor:pointer}
+.icon-btn:hover,#classroom-settings-btn:hover,#classroom-menu-btn:hover {background:var(--sidebar-bg);color:var(--text)}
 #classroom-settings-btn {width:40px;padding:10px}
 .identity-btn {border:0;background:transparent;color:var(--text-dim);font-size:13px;cursor:pointer;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:9px 11px;border-radius:7px}
 .identity-btn:hover {background:var(--panel-bg)}
@@ -41,7 +38,7 @@ svg {flex-shrink:0}
 #classroom-student-identity .identity-btn:disabled {opacity:1;cursor:default;color:var(--text-muted)}
 .badge {font-size:12px;font-weight:400}
 
-/* The screen occupies all available width; drawers never change its size. */
+/* The stage uses the space left of the permanent classroom rail. */
 #body {position:relative;min-width:0;min-height:0;padding-bottom:var(--bottombar-h)}
 #main {min-width:0;min-height:0}
 #stage {display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;padding:8px 28px 0}
@@ -73,8 +70,6 @@ svg {flex-shrink:0}
 #btn-fullscreen:hover {background:var(--panel-bg);color:var(--text)}
 .classroom-zoom-controls {order:2;display:flex;align-items:center;gap:3px;flex-shrink:0}
 #btn-screenshot {order:3}
-#chat-toggle-btn {order:4;position:relative;margin-left:0;background:transparent;color:var(--text-dim);border-color:transparent;border-left-color:var(--border);border-radius:0 7px 7px 0;padding-left:15px}
-#chat-toggle-btn[aria-expanded=true] {background:var(--accent-glow);color:var(--accent);border-color:transparent}
 #teacher-command-btn,#classroom-more-btn {order:5}
 #teacher-help-btn {order:6;min-width:34px;padding-left:10px;padding-right:10px}
 #bottombar>.sep,#fps-bar {display:none}
@@ -90,7 +85,6 @@ svg {flex-shrink:0}
 .classroom-drawer-heading {position:sticky;top:0;z-index:2}
 .classroom-drawer-heading h2,.classroom-drawer-heading h3,.chat-title {font-size:15px;font-weight:600;letter-spacing:0;color:var(--text);text-transform:none;margin:0}
 .chat-title {order:0;min-width:0;flex:1}
-#discussion-teacher-controls {order:1}
 #classroom-chat-close {order:2}
 .classroom-drawer-heading button,#classroom-chat-close,#classroom-sidebar-close {display:inline-flex;align-items:center;justify-content:center;min-height:34px;min-width:34px;padding:7px;border:0;border-radius:7px;background:transparent;color:var(--text-dim);cursor:pointer}
 .classroom-drawer-heading button:hover,#classroom-chat-close:hover,#classroom-sidebar-close:hover {background:var(--panel-bg)}
@@ -117,7 +111,6 @@ svg {flex-shrink:0}
 .sidebar-members #viewer-list-panel {max-height:none;overflow:visible}
 .sidebar-members .s-label {display:flex;align-items:center;gap:7px}
 .advanced-settings #fps-bar {display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;font-size:12px;white-space:normal;overflow-wrap:anywhere}
-#classroom-member-manage {margin-bottom:18px}
 #teacher-help-btn {display:none}
 #teacher-settings-btn {margin:18px 20px;width:calc(100% - 40px)}
 .range-row,.toggle-row {font-size:13px}
@@ -167,9 +160,8 @@ kbd {font-size:11px}
 .chat-send-btn {width:44px;min-height:44px}
 .chat-footer-hint {font-size:11px;color:var(--text-muted);padding:8px 0 0}
 .msg-actions {background:var(--sidebar-bg);box-shadow:var(--shadow)}
-#chat-unread-badge {top:-4px;right:-3px;font-size:10px;min-width:18px;height:18px;border-radius:9px}
 #discussion-controls {padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;flex-shrink:0}
-#discussion-teacher-controls {flex-shrink:0}
+#discussion-teacher-controls {display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px;margin-bottom:4px;flex-shrink:0}
 #discussion-mute-all {display:flex;align-items:center;gap:8px;padding:6px 0;border:0;background:transparent;color:var(--text-dim);font:inherit;font-size:12px;cursor:pointer;white-space:nowrap}
 .discussion-switch {position:relative;width:30px;height:18px;border-radius:12px;background:#8592a4;transition:background .15s}
 .discussion-switch:after {content:"";position:absolute;left:3px;top:3px;width:12px;height:12px;border-radius:50%;background:#fff;transition:transform .15s}
@@ -258,7 +250,7 @@ kbd {font-size:11px}
   #logo svg {width:28px;height:28px;padding:5px;border-radius:8px}
   #classroom-title {font-size:14px}
   #classroom-menu-btn {padding:7px 4px;min-width:25px}
-  .icon-btn,#viewer-badge,#classroom-invite-btn,#classroom-settings-btn {padding:7px 8px;min-height:38px;font-size:12px;gap:5px}
+  .icon-btn,#classroom-settings-btn {padding:7px 8px;min-height:38px;font-size:12px;gap:5px}
   #classroom-settings-btn {width:36px;padding:8px}
   .identity-btn {max-width:90px;padding:8px 6px;font-size:12px}
   #stage {padding:7px 14px 0}
@@ -278,17 +270,10 @@ kbd {font-size:11px}
   #teacher-command-btn {min-width:42px}
   #teacher-help-btn {min-width:32px;padding:7px}
   #bottombar {width:max-content;max-width:calc(100vw - 24px)}
-  #chat-toggle-btn {padding-left:10px;border-left:0;border-radius:7px}
   #teacher-hide-btn,#btn-pause {padding-left:10px;padding-right:10px}
 }
 @media(max-width:420px) {
   #topbar {padding:0 12px;gap:5px}
-  #viewer-badge {font-size:0;padding:7px;gap:5px}
-  #viewer-count {font-size:12px}
-  #viewer-badge span:not(#viewer-count) {display:none}
-  #classroom-invite-btn {font-size:0;padding:8px;width:34px}
-  #classroom-invite-btn>span {display:none}
-  #classroom-invite-btn svg {width:18px;height:18px}
   #classroom-title {max-width:118px}
   .classroom-top-actions {gap:3px}
   #classroom-student-identity .identity-btn {max-width:72px;padding-left:4px;padding-right:4px}
@@ -312,3 +297,42 @@ kbd {font-size:11px}
   #sidebar,#chat-panel {bottom:calc(var(--bottombar-h) + 2px)}
 }
 @media(prefers-reduced-motion:reduce) {*,*:before,*:after {animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Online members and discussion share a permanent desktop rail. */
+#stage {padding-right:calc(var(--classroom-rail-w) + 40px)}
+#classroom-rail {position:fixed;top:calc(var(--topbar-h) + 8px);right:20px;bottom:calc(var(--bottombar-h) + 8px);width:var(--classroom-rail-w);display:flex;flex-direction:column;min-height:0;background:var(--sidebar-bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;z-index:125}
+.classroom-rail-heading {display:flex;align-items:center;justify-content:space-between;flex-shrink:0;padding:0 16px;border-bottom:1px solid var(--border)}
+.classroom-rail-heading [role=tablist] {display:flex;gap:22px}
+.classroom-rail-heading [role=tab] {display:flex;align-items:center;gap:5px;min-height:52px;padding:12px 0;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--text-dim);cursor:pointer;white-space:nowrap}
+.classroom-rail-heading [aria-selected=true] {border-bottom-color:var(--accent);color:var(--accent);font-weight:600}
+#classroom-discussion-tab #chat-unread-badge {position:static;display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;border-radius:10px;background:var(--red);color:#fff;font-size:10px}
+#classroom-rail-close {display:none}
+#classroom-members-panel {flex:1;min-height:0;overflow:auto}
+#classroom-members-panel .sidebar-members {display:block!important;margin:0}
+#classroom-members-panel .s-label {display:none}
+#classroom-members-panel #viewer-list-panel {max-height:none;overflow:visible}
+#classroom-rail #chat-panel {position:static;inset:auto;width:100%!important;flex:1;min-height:0;max-height:none;border:0;border-radius:0;box-shadow:none}
+#classroom-rail .chat-header {display:none}
+#classroom-rail .chat-title,#classroom-chat-close {display:none}
+#chat-messages {flex:1;overflow:auto;scroll-behavior:auto}
+@media(min-width:761px) {
+  #sidebar {right:calc(var(--classroom-rail-w) + 32px)}
+  #bottombar {left:calc((100% - var(--classroom-rail-w) - 20px)/2);max-width:calc(100vw - var(--classroom-rail-w) - 48px)}
+}
+@media(max-width:760px) {
+  #stage {padding-right:14px}
+  #classroom-rail {display:none;right:12px;top:calc(var(--topbar-h) + 4px);bottom:calc(var(--bottombar-h) + 4px);width:min(340px,calc(100vw - 24px));z-index:135;box-shadow:var(--shadow)}
+  #classroom-rail.mobile-open {display:flex}
+  #classroom-rail-close {display:inline-flex}
+}
+@media(max-width:420px) {
+  #stage {padding-right:10px}
+  #classroom-rail {right:8px;width:calc(100vw - 16px)}
+  #classroom-title {max-width:80px}
+}
+
+/* A compact, non-interactive online status indicator. */
+#viewer-badge {display:inline-flex;align-items:center;gap:6px;margin:0;padding:4px 8px;min-height:26px;box-sizing:border-box;border:1px solid #86d5ad;border-radius:7px;background:#e4f7ec;color:#14643d;font-size:12px;font-weight:500;line-height:16px;white-space:nowrap;cursor:default;transition:background .15s,border-color .15s}
+.online-status-dot {width:6px;height:6px;flex-shrink:0;border-radius:50%;background:#16834b;box-shadow:0 0 0 2px #16834b22;transition:background .15s,box-shadow .15s}
+#viewer-badge.bump {background:#c5efd6;border-color:#36aa6e}
+#viewer-badge.bump .online-status-dot {background:#08763b;box-shadow:0 0 0 3px #16834b33}

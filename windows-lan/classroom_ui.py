@@ -64,17 +64,15 @@ def _swap(source, old, new):
 
 
 def _focus_layout(template):
-    """Keep upstream bindings while giving the shared screen the whole stage."""
+    """Keep upstream bindings while grouping classroom controls."""
     def button(button_id):
         return re.search(rf'<button\b[^>]*\bid="{button_id}".*?</button>', template, re.S)[0]
 
     logo = re.search(r'<div id="logo".*?</div>', template, re.S)[0]
     logo = re.sub(r'</svg>.*?</div>', '</svg></div>', logo, flags=re.S)
-    viewer = re.search(r'<div class="badge" id="viewer-badge".*?</div>', template, re.S)[0]
-    viewer = viewer.replace('<div ', '<button type="button" ', 1).replace('</div>', '</button>')
-    viewer = viewer.replace('title="当前在线人数（含教师）"',
-                            'title="查看课堂成员" aria-controls="sidebar" aria-expanded="false"')
-    chat = button('chat-toggle-btn').replace('icon-btn', 'btn').replace('课堂讨论</span>', '讨论</span>')
+    viewer = '''<div id="viewer-badge" role="status" aria-live="polite" aria-atomic="true" title="当前在线人数（含教师）">
+      <span class="online-status-dot" aria-hidden="true"></span><span><span id="viewer-count">0</span> 人在线</span>
+    </div>'''
     sidebar_toggle = button('sidebar-toggle-btn').replace('id="sidebar-toggle-btn"',
                                                          'id="sidebar-toggle-btn" hidden')
     identity = button('identity-btn')
@@ -90,7 +88,6 @@ def _focus_layout(template):
   <span id="host-topbar-badge" hidden>教师</span><span id="live-badge" hidden></span>
   <div class="classroom-top-actions">
     {viewer}
-    <button id="classroom-invite-btn" class="icon-btn teacher-only" aria-label="复制学生上课地址"><span aria-hidden="true">↗</span><span>邀请学生</span></button>
     <button id="classroom-settings-btn" class="icon-btn" aria-controls="sidebar" aria-expanded="false" aria-label="课堂设置"><span aria-hidden="true">⚙</span><span>设置</span></button>
     <span id="classroom-student-identity"></span>
   </div>
@@ -101,6 +98,7 @@ def _focus_layout(template):
   <button id="classroom-room-btn" class="icon-btn teacher-only">课堂管理</button>
   <button id="classroom-new-btn" class="icon-btn teacher-only">创建新课堂</button>
   <button id="classroom-menu-members" class="icon-btn">查看课堂成员</button>
+  <button id="classroom-menu-discussion" class="icon-btn">课堂讨论</button>
   {identity}
 </div>
 ''' + template[end:]
@@ -116,14 +114,11 @@ def _focus_layout(template):
                                 '<div class="s-section teacher-only">\n      <div class="s-label">显示选项')
     template = _swap(template, '    <!-- Viewer list -->\n    <div class="s-section">',
                      '''    <!-- Viewer list -->
-    <div class="s-section sidebar-members">
-      <button id="classroom-member-manage" class="host-btn teacher-only">发言权限管理</button>''')
+    <div class="s-section sidebar-members">''')
     template = re.sub(r'      <header class="stage-heading">.*?</header>', '', template, count=1, flags=re.S)
     template = re.sub(r'<footer class="stage-footer">.*?</footer>',
                       '<footer class="stage-footer"><span id="stage-status" role="status">正在连接</span></footer>',
                       template, count=1, flags=re.S)
-    template = _swap(template, '<div class="chat-header">',
-                     '<div class="chat-header"><button id="classroom-chat-close" class="icon-btn" aria-label="关闭课堂讨论">×</button>')
     # Keep all three zoom actions visible together in the dock.
     zoom = '\n'.join(button(name) for name in ('btn-zoom-in', 'btn-zoom-out', 'btn-zoom-reset'))
     for name in ('btn-zoom-in', 'btn-zoom-out', 'btn-zoom-reset'):
@@ -131,7 +126,6 @@ def _focus_layout(template):
     zoom = zoom.replace('>1:1</button>', '>适应窗口</button>')
     template = _swap(template, '</div><!-- /bottombar -->', f'''
   <div class="classroom-zoom-controls" role="group" aria-label="画面缩放">{zoom}</div>
-  {chat}
   <button id="classroom-more-btn" class="btn" aria-controls="sidebar" aria-expanded="false">更多</button>
 </div><!-- /bottombar -->''')
     conn = re.search(r'<span id="conn-state".*?</span>', template, re.S)[0]
@@ -209,6 +203,17 @@ def render_template(template):
     template = re.sub(r'(<button class="btn" id="btn-pause".*?</button>)',
                       lambda m: m[1] + '\n' + fullscreen, template, count=1, flags=re.S)
     template = _focus_layout(template)
+    template = _swap(template, '<script type="module" src="/static/js/main.js"></script>', '''<aside id="classroom-rail" aria-label="课堂侧栏">
+  <div class="classroom-rail-heading">
+    <div role="tablist" aria-label="课堂侧栏内容">
+      <button id="classroom-online-tab" role="tab" aria-selected="true" aria-controls="classroom-members-panel">在线（<span id="classroom-online-count">0</span>）</button>
+      <button id="classroom-discussion-tab" role="tab" aria-selected="false" aria-controls="chat-panel" tabindex="-1">讨论 <span id="chat-unread-badge" style="display:none"></span></button>
+    </div>
+    <button id="classroom-rail-close" class="icon-btn" aria-label="收起课堂侧栏">×</button>
+  </div>
+  <div id="classroom-members-panel" role="tabpanel" aria-labelledby="classroom-online-tab"></div>
+</aside>
+<script type="module" src="/static/js/main.js"></script>''')
     template = _swap(template, '<script type="module" src="/static/js/main.js"></script>',
                      '<script type="module" src="/static/js/main.js"></script>\n<script type="module" src="/classroom-ui/classroom.js"></script>\n<script type="module" src="/classroom-ui/screen-pan.js"></script>')
     return template
@@ -251,7 +256,11 @@ def localize_script(name, source):
         source = "import { explainError } from '/classroom-ui/classroom-errors.js';\n" + source
         source = source.replace("d.reason || '密码不正确，请重新输入'", "explainError(d.reason, '密码不正确，请重新输入')")
         source = source.replace("data?.reason || '文件发送失败，请重试'", "explainError(data?.reason, '文件发送失败，请重试')")
+    if name == 'main.js':
+        source = source.replace("  _on('chat-toggle-btn', () => toggleChat());", '')
     if name == 'controls.js':
+        source = source.replace("  document.getElementById('sidebar').classList.toggle('collapsed');",
+                                "  document.dispatchEvent(new CustomEvent('classtream:open-panel', {detail:{panel:'settings'}}));")
         source = source.replace("    if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;",
                                 "    if (e.ctrlKey || e.metaKey || e.altKey || e.target.isContentEditable ||\n        ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'SUMMARY'].includes(e.target.tagName)) return;")
     if name == 'sidebar.js':
@@ -259,4 +268,22 @@ def localize_script(name, source):
         source = source.replace("export async function generateNewSession() {", """export async function generateNewSession() {
   if (/^https?:/.test(document.getElementById('current-session-link').textContent.trim()) &&
       !confirm('创建新课堂会使当前课堂失效，学生需要重新进入。确定继续吗？')) return;""")
+    if name == 'chat.js':
+        source = re.sub(r'export function toggleChat\(\) \{.*?\n\}', '''let _savedScroll = null;
+export function setChatOpen(open) {
+  const panel = document.getElementById('chat-panel');
+  const list = document.getElementById('chat-messages');
+  const wasOpen = !panel.classList.contains('hidden');
+  if (open === wasOpen) return;
+  if (!open) _savedScroll = list.scrollTop;
+  panel.classList.toggle('hidden', !open);
+  if (open) {
+    _unread = 0;
+    _updateUnreadBadge();
+    list.scrollTop = _savedScroll === null ? list.scrollHeight : _savedScroll;
+  }
+}
+export function toggleChat() {
+  document.dispatchEvent(new CustomEvent('classtream:open-panel', {detail:{panel:'chat'}}));
+}''', source, count=1, flags=re.S)
     return source

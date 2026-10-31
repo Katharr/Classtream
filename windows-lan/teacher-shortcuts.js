@@ -254,7 +254,7 @@ export function initTeacherShortcuts() {
     $(id)?.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();hideTooltip();run(commands.find(c=>c.id===(id==='teacher-hide-btn' && state.sharingFrozen?'restore':command)));},true);
     if($(id))$(id).dataset.shortcutCommand=command;
   }
-  for(const [id,command] of Object.entries({'sidebar-toggle-btn':'sidebar','chat-toggle-btn':'chat',
+  for(const [id,command] of Object.entries({'sidebar-toggle-btn':'sidebar','classroom-discussion-tab':'chat',
     'chat-file-btn':'file','chat-code-btn':'code','identity-btn':'logout','save-display-name-btn':'name'})){
     if($(id))$(id).dataset.shortcutCommand=command;
   }

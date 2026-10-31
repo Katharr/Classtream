@@ -27,10 +27,12 @@ export function refreshDiscussionInputs() {
 export function initDiscussion() {
   const panel = document.createElement('div');
   panel.id = 'discussion-controls';
-  panel.innerHTML = `<div class="discussion-status-row">
-      <div id="discussion-status" role="status">学员可自由发言</div>
+  panel.innerHTML = `<div id="discussion-teacher-controls" hidden>
+      <button id="discussion-mute-all" type="button" role="switch" aria-checked="false" aria-label="全员禁言">
+        <span>全员禁言</span><span class="discussion-switch" aria-hidden="true"></span></button>
       <button id="discussion-member-open" type="button" aria-haspopup="dialog" hidden>学员管理 <span aria-hidden="true">›</span></button>
     </div>
+    <div class="discussion-status-row"><div id="discussion-status" role="status">学员可自由发言</div></div>
     <div id="discussion-feedback" role="status"></div>
     <div id="discussion-error" role="alert"></div>
     <dialog id="discussion-member-settings" aria-labelledby="discussion-member-title">
@@ -46,12 +48,6 @@ export function initDiscussion() {
       <div id="discussion-member-list"></div>
     </dialog>`;
   document.getElementById('chat-messages').before(panel);
-  const controls = document.createElement('div');
-  controls.id = 'discussion-teacher-controls';
-  controls.hidden = true;
-  controls.innerHTML = `<button id="discussion-mute-all" type="button" role="switch" aria-checked="false" aria-label="全员禁言">
-    <span>全员禁言</span><span class="discussion-switch" aria-hidden="true"></span></button>`;
-  document.querySelector('#chat-panel .chat-header').append(controls);
   const drawer = document.getElementById('discussion-member-settings');
   document.getElementById('discussion-member-open').addEventListener('click', () => {
     drawer.showModal();

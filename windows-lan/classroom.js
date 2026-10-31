@@ -1,6 +1,6 @@
 import { state } from '/static/js/state.js';
 import { adminLogout } from '/static/js/api.js';
-import { toggleChat } from '/static/js/chat.js';
+import { setChatOpen } from '/static/js/chat.js';
 import { initTeacherShortcuts } from '/classroom-ui/teacher-shortcuts.js';
 
 const $ = id => document.getElementById(id);
@@ -12,6 +12,17 @@ const chat = $('chat-panel');
 const menu = $('classroom-menu');
 let drawerTrigger = null;
 sidebar.classList.add('collapsed');
+const rail = $('classroom-rail');
+const members = $('classroom-members-panel');
+const onlineTab = $('classroom-online-tab');
+const discussionTab = $('classroom-discussion-tab');
+const narrow = matchMedia('(max-width:760px)');
+members.append(document.querySelector('.sidebar-members'));
+rail.append(chat);
+chat.setAttribute('role', 'tabpanel');
+chat.setAttribute('aria-labelledby', discussionTab.id);
+let activeTab = 'members';
+let mobileOpen = false;
 
 // Keep inherited action targets, but put only common actions in the dock.
 if (teacher) {
@@ -27,8 +38,6 @@ function actionIcon(paths) {
   const svg = $('btn-fullscreen').querySelector('svg').cloneNode(true);
   svg.innerHTML = paths; svg.setAttribute('aria-hidden', 'true'); return svg;
 }
-const inviteText = document.createElement('span'); inviteText.textContent = '邀请学生';
-$('classroom-invite-btn').replaceChildren(actionIcon('<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2"/>'), inviteText);
 $('classroom-settings-btn').replaceChildren(actionIcon('<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--bg)"/><circle cx="15" cy="17" r="3" fill="var(--bg)"/>'));
 $('classroom-settings-btn').title = '课堂设置';
 
@@ -47,7 +56,7 @@ document.querySelectorAll('.full-overlay').forEach(el => el.setAttribute('role',
 $('conn-state').setAttribute('role', 'status');
 $('chat-messages').setAttribute('role', 'log');
 $('chat-messages').setAttribute('aria-label', '课堂讨论消息');
-chat.setAttribute('role', 'region'); chat.setAttribute('aria-label', '课堂讨论');
+chat.setAttribute('aria-label', '课堂讨论');
 
 function closeMenus(restore = false) {
   for (const [element, button] of [[menu, $('classroom-menu-btn')]]) {
@@ -61,12 +70,47 @@ function closeSidebar(restore = false) {
   sidebar.classList.add('collapsed');
   if (restore) (drawerTrigger || $('classroom-settings-btn')).focus();
 }
-function closeChat(restore = false) {
-  if (!chat.classList.contains('hidden')) toggleChat();
-  if (restore) $('chat-toggle-btn').focus();
+function closeMobileRail(restore = false) {
+  mobileOpen = false;
+  syncRail();
+  if (restore) $('classroom-menu-btn').focus();
 }
+function syncRail() {
+  const visible = !narrow.matches || mobileOpen;
+  rail.classList.toggle('mobile-open', mobileOpen);
+  rail.inert = !visible;
+  members.hidden = activeTab !== 'members';
+  members.inert = activeTab !== 'members' || !visible;
+  setChatOpen(activeTab === 'chat' && visible);
+  chat.inert = activeTab !== 'chat' || !visible;
+  for (const [tab, selected] of [[onlineTab, activeTab === 'members'], [discussionTab, activeTab === 'chat']]) {
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  }
+}
+function selectRailTab(panel, focus = false) {
+  closeSidebar(); closeMenus();
+  activeTab = panel; mobileOpen = true;
+  syncRail();
+  if (focus) (panel === 'chat' ? discussionTab : onlineTab).focus();
+}
+onlineTab.addEventListener('click', () => selectRailTab('members'));
+discussionTab.addEventListener('click', () => selectRailTab('chat'));
+rail.querySelector('[role=tablist]').addEventListener('keydown', e => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+  e.preventDefault();
+  selectRailTab(e.key === 'Home' ? 'members' : e.key === 'End' ? 'chat' : activeTab === 'chat' ? 'members' : 'chat', true);
+});
+$('classroom-rail-close').addEventListener('click', () => closeMobileRail(true));
+narrow.addEventListener('change', () => { mobileOpen = false; syncRail(); });
+function syncRailBadges() {
+  $('classroom-online-count').textContent = $('viewer-count').textContent;
+}
+new MutationObserver(syncRailBadges).observe($('viewer-count'), {childList:true, characterData:true, subtree:true});
+syncRail(); syncRailBadges();
 function openPanel(panel, trigger = $('classroom-settings-btn')) {
-  closeMenus(); closeChat();
+  if (panel === 'members' || panel === 'chat') { selectRailTab(panel); return; }
+  closeMenus(); closeMobileRail();
   sidebar.dataset.panel = panel;
   const label = {room:'课堂管理', settings:'课堂设置', members:'课堂成员'}[panel] || '课堂设置';
   $('classroom-drawer-title').textContent = label;
@@ -82,7 +126,7 @@ function togglePanel(panel, trigger) {
 }
 function toggleMenu(element, button) {
   const open = element.hidden;
-  closeMenus(); closeSidebar(); closeChat();
+  closeMenus(); closeSidebar(); closeMobileRail();
   if (open) {
     element.hidden = false; button.setAttribute('aria-expanded', 'true');
     const first = [...element.querySelectorAll('button')].find(x => !x.disabled && x.getClientRects().length);
@@ -92,16 +136,11 @@ function toggleMenu(element, button) {
 $('classroom-menu-btn').addEventListener('click', () => toggleMenu(menu, $('classroom-menu-btn')));
 $('classroom-settings-btn').addEventListener('click', () => togglePanel('settings', $('classroom-settings-btn')));
 $('classroom-more-btn').addEventListener('click', () => togglePanel('settings', $('classroom-more-btn')));
-$('viewer-badge').addEventListener('click', () => togglePanel('members', $('viewer-badge')));
 $('classroom-menu-members').addEventListener('click', () => openPanel('members', $('classroom-menu-btn')));
+$('classroom-menu-discussion').addEventListener('click', () => openPanel('chat', $('classroom-menu-btn')));
 $('classroom-room-btn').addEventListener('click', () => openPanel('room', $('classroom-menu-btn')));
 $('classroom-sidebar-close').addEventListener('click', () => closeSidebar(true));
-$('classroom-chat-close').addEventListener('click', () => closeChat(true));
 $('classroom-new-btn').addEventListener('click', () => { closeMenus(); $('new-session-btn').click(); });
-$('classroom-invite-btn').addEventListener('click', () => $('copy-current-btn').click());
-$('classroom-member-manage').addEventListener('click', () => {
-  closeSidebar(); $('discussion-member-open')?.click();
-});
 document.addEventListener('classtream:open-panel', event => openPanel(event.detail.panel));
 
 // Moderation must also work while the discussion drawer is closed.
@@ -111,31 +150,21 @@ if (memberDialog) document.body.append(memberDialog);
 function syncPanels() {
   const sideOpen = !sidebar.classList.contains('collapsed');
   sidebar.inert = !sideOpen;
-  for (const [id, panel] of [['classroom-settings-btn', 'settings'], ['viewer-badge', 'members'], ['classroom-more-btn', 'settings']])
+  for (const [id, panel] of [['classroom-settings-btn', 'settings'], ['classroom-more-btn', 'settings']])
     $(id).setAttribute('aria-expanded', String(sideOpen && sidebar.dataset.panel === panel));
   $('sidebar-toggle-btn').setAttribute('aria-expanded', String(sideOpen));
-  const chatOpen = !chat.classList.contains('hidden');
-  chat.inert = !chatOpen;
-  $('chat-toggle-btn').setAttribute('aria-expanded', String(chatOpen));
 }
-let sideWasOpen = false, chatWasOpen = false;
+let sideWasOpen = false;
 new MutationObserver(() => {
   const open = !sidebar.classList.contains('collapsed');
-  if (open && !sideWasOpen) { closeChat(); closeMenus(); }
+  if (open && !sideWasOpen) { closeMobileRail(); closeMenus(); }
   sideWasOpen = open; syncPanels();
 }).observe(sidebar, {attributes:true, attributeFilter:['class', 'data-panel']});
-new MutationObserver(() => {
-  const open = !chat.classList.contains('hidden');
-  syncPanels();
-  if (open && !chatWasOpen) { closeSidebar(); closeMenus(); $('chat-input').focus(); }
-  chatWasOpen = open;
-}).observe(chat, {attributes:true, attributeFilter:['class']});
-$('chat-toggle-btn').setAttribute('aria-controls', 'chat-panel');
 syncPanels();
 
 document.addEventListener('click', e => {
   if (!e.target.closest('#classroom-menu,#classroom-menu-btn')) closeMenus();
-  if (e.target.closest('#screen-area')) { closeSidebar(); closeChat(); }
+  if (e.target.closest('#screen-area')) { closeSidebar(); closeMobileRail(); }
 });
 const identity = $('identity-btn');
 function updateIdentity() {
@@ -190,7 +219,7 @@ document.addEventListener('keydown', e => {
   if (!dialog && e.key === 'Escape') {
     if (!menu.hidden) { e.preventDefault(); closeMenus(true); }
     else if (!sidebar.classList.contains('collapsed')) { e.preventDefault(); closeSidebar(true); }
-    else if (!chat.classList.contains('hidden') && $('chat-code-panel').classList.contains('hidden') && $('chat-emoji-picker').classList.contains('hidden') && $('chat-reply-bar').classList.contains('hidden')) { e.preventDefault(); closeChat(true); }
+    else if (narrow.matches && mobileOpen && $('chat-code-panel').classList.contains('hidden') && $('chat-emoji-picker').classList.contains('hidden') && $('chat-reply-bar').classList.contains('hidden')) { e.preventDefault(); closeMobileRail(true); }
   }
   if (!dialog || e.key !== 'Tab') return;
   const fields = [...dialog.querySelectorAll('button,input,textarea,select,a[href]')].filter(el => !el.disabled && el.getClientRects().length);
