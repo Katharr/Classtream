@@ -66,6 +66,7 @@ async def check_capture_heartbeat():
         messages = []
 
         def publish(self, monitor, snapshot): self.latest[monitor] = snapshot
+        def display_snapshot(self, monitor): return self.latest.get(monitor)
         def get_viewer_list(self): return []
         def metrics(self, _): return {}
         async def broadcast(self, _, data): self.messages.append(json.loads(data))

@@ -74,7 +74,7 @@ const {chromium}=require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
     assert.equal(await student.locator('#teacher-actions').count(),0);
     assert.equal(await student.locator('#btn-pause').isVisible(),true);
     await page.bringToFront();await bodyKey('h');await waitFrozen(true);
-    // Keep existing sockets and final pixels; the live teacher preview still advances.
+    // Keep existing sockets; teacher and students display the same frozen pixels.
     await student.waitForTimeout(300);
     const pixels=async p=>p.locator('#screen-img').evaluate(c=>c.toDataURL());
     const finalFrame=await pixels(student);
@@ -83,7 +83,18 @@ const {chromium}=require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
     await context.request.post(base+'/test/color/255');
     await student.waitForTimeout(3300);
     assert.equal(await pixels(student),finalFrame);
-    assert.notEqual(await pixels(page),finalFrame);
+    assert.equal(await pixels(page),finalFrame);
+    assert.equal(await page.locator('#stream-overlay').isVisible(),false);
+    // Keep the primary teacher connected: upstream ends student sessions when
+    // the last teacher disconnects, independently of the freeze feature.
+    const refreshed=await context.newPage();refreshed.on('pageerror',e=>errors.push(e.message));
+    await refreshed.goto(base+'/?host=fixture');
+    await assertEventually(async()=>await pixels(refreshed)===finalFrame);
+    await refreshed.reload();
+    await assertEventually(async()=>await pixels(refreshed)===finalFrame);
+    assert.equal(await refreshed.locator('#stream-overlay').isVisible(),false);
+    await refreshed.close();
+    await page.bringToFront();
     assert.equal(await student.locator('#single-private-overlay').isVisible(),false);
     assert.equal(await student.locator('#stream-overlay').isVisible(),false);
     assert.equal(await student.evaluate(async()=>{const {state}=await import('/static/js/state.js');return window.freezeSocket===state.wsMap.single&&state.wsMap.single.readyState===1;}),true);
@@ -106,7 +117,7 @@ const {chromium}=require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
     await page.locator('#teacher-hide-btn').hover();
     assert.ok((await page.locator('#teacher-shortcut-tooltip').innerText()).includes('Shift+h'));
     await page.locator('#teacher-hide-btn').click();await waitFrozen(false);
-    await assertEventually(async()=>await red(student)>220&&await red(late)>220);
+    await assertEventually(async()=>await red(page)>220&&await red(student)>220&&await red(late)>220);
     assert.equal(await student.evaluate(async()=>window.freezeSocket===(await import('/static/js/state.js')).state.wsMap.single),true);
     await lateContext.close();
     await page.locator('#teacher-hide-btn').click();await waitFrozen(true);
@@ -153,7 +164,7 @@ const {chromium}=require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
     assert.equal(await frozen(),false);await student.keyboard.press('Space');
     assert.equal(await student.evaluate(async()=>(await import('/static/js/state.js')).state.paused),true);
     assert.deepEqual(errors,[]);
-    console.log('PASS: no teacher pause, composition/repeat/input/modal guards, command search, create cancellation, frozen final pixels/no reconnect/live teacher preview/late join/chat/automatic resume, rebinding persistence/conflict, page disable, native enable/disable, student role separation and pause.');
+    console.log('PASS: no teacher pause, composition/repeat/input/modal guards, command search, create cancellation, same frozen teacher/student pixels/no reconnect/teacher reload/late join/chat/automatic resume, rebinding persistence/conflict, page disable, native enable/disable, student role separation and pause.');
   } finally {
     if(headers)await context.request.post(base+'/api/teacher-shortcuts',{headers,data:{enabled:false}}).catch(()=>{});
     await browser.close();

@@ -55,7 +55,7 @@ async def heartbeat():
     while True:
         await asyncio.sleep(1)
         if mode['heartbeat']:
-            snapshot = store.latest
+            snapshot = state.manager.display_snapshot(1)
             await state.manager.broadcast(1, json.dumps(dict(
                 type='meta', fps=30 if mode['moving'] else 0, target_fps=30,
                 viewers=state.manager.total_viewers, quality=state.settings.quality,

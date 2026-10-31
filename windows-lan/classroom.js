@@ -171,7 +171,7 @@ const conn = $('conn-state');
 function updateStatus() {
   const phase = conn.dataset.phase || 'waiting';
   const connected = phase === 'live';
-  const text = connected ? teacher && state.sharingFrozen ? '学生画面已冻结 · 教师预览实时更新' : teacher ? '正在向学生共享屏幕' : '正在观看老师的屏幕' : conn.dataset.message || '正在等待老师的画面…';
+  const text = teacher && phase === 'frozen' ? '画面已冻结 · 当前显示冻结画面' : connected ? teacher ? '正在向学生共享屏幕' : '正在观看老师的屏幕' : conn.dataset.message || '正在等待老师的画面…';
   $('stage-status').textContent = text;
   $('stage-status').dataset.frozen = String(teacher && state.sharingFrozen);
   const badge = {paused:'画面已暂停', frozen:'教师已冻结', source:'画面暂不可用', lagging:'画面落后',

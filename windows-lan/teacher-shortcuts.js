@@ -187,7 +187,7 @@ export function initTeacherShortcuts() {
   $('bottombar').prepend(toolbar);
   const ui=document.createElement('div');ui.id='teacher-shortcut-ui';
   ui.innerHTML=`
-    <div id="teacher-privacy-banner" role="status" hidden>学生画面已冻结 · 学生停留在最后一帧 · 教师预览仍可继续</div>
+    <div id="teacher-privacy-banner" role="status" hidden>画面已冻结 · 教师与学生显示同一冻结帧 · 恢复后继续共享</div>
     <div id="teacher-toast" role="status" aria-live="polite" hidden></div>
     <div id="teacher-command-dialog" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="快捷操作">
       <div class="modal-box teacher-dialog"><div class="teacher-dialog-heading"><h2>快捷操作</h2><button data-close="teacher-command-dialog">关闭 Esc</button></div>

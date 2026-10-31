@@ -82,11 +82,28 @@ function fixture() {
   for (let i = 0; i < 12; i++) { ws.meta({ capture_age_ms: 5000 }); f.advance(1000); }
   assert.equal(f.phase(), 'source'); assert.equal(f.retries(), 0, 'capture failure must not cause reconnect loop');
   ws.meta(); assert.equal(f.phase(), 'live');
-  for (let i = 0; i < 8; i++) { ws.meta({ stream_seq: 99, frozen: true }); f.advance(1000); }
+  for (let i = 0; i < 8; i++) { ws.meta({ frozen: true }); f.advance(1000); }
   assert.equal(f.phase(), 'frozen'); assert.equal(f.retries(), 0);
   f.state.paused = true;
   for (let i = 0; i < 8; i++) { ws.meta({ stream_seq: 199 }); f.advance(1000); }
   assert.equal(f.phase(), 'paused'); assert.equal(f.retries(), 0);
+}
+{
+  const f = fixture(); f.state.myRole = 'host';
+  const ws = f.connect(); ws.open(); ws._frameApplied(1, 1, true);
+  for (let i = 0; i < 8; i++) { ws.meta({ frozen: true, capture_age_ms: 5000 }); f.advance(1000); }
+  assert.equal(f.phase(), 'frozen', 'teacher retains frozen picture even if capture later fails');
+  assert.equal(f.retries(), 0);
+  ws.meta({ frozen: true, stream_seq: 2 });
+  ws._frameApplied(1, 2, true); assert.equal(f.phase(), 'frozen');
+  ws.meta({ stream_seq: 3 }); ws._frameApplied(1, 3, true);
+  assert.equal(f.phase(), 'live', 'teacher resumes with the latest frame');
+}
+{
+  const f = fixture(); f.state.myRole = 'host';
+  const ws = f.connect(); ws.open();
+  for (let i = 0; i < 8; i++) { ws.meta({ frozen: true, stream_epoch: 0, stream_seq: 0 }); f.advance(1000); }
+  assert.equal(f.phase(), 'waiting'); assert.equal(f.retries(), 0);
 }
 {
   const f = fixture(), ws = f.connect(); ws.open(); ws._frameApplied(1, 1, true);

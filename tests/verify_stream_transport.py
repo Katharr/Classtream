@@ -248,8 +248,9 @@ async def check_freeze():
         frame[:] = 255
         live = store.update(frame, 70, (0, 0, False))
         manager.publish(1, live)
-        await until(lambda: manager.peers[id(teacher.ws)].last_seq == live.seq)
-        assert manager.peers[id(student.ws)].last_seq == initial.seq
+        await asyncio.sleep(.05)
+        assert all(manager.peers[id(b.ws)].last_seq == initial.seq for b in (student, teacher))
+        assert manager.display_snapshot(1) is initial
         await manager.connect(late.ws, 1)
         receivers.append(asyncio.create_task(late.consume()))
         await until(lambda: manager.peers[id(late.ws)].frames_sent == 1)
@@ -257,7 +258,7 @@ async def check_freeze():
         manager.set_frozen(True)  # Idempotence must not replace the frozen snapshot.
         assert manager.frozen_frames[1] is initial
         manager.set_frozen(False)  # Resume even when no new capture is published.
-        await until(lambda: all(manager.peers[id(b.ws)].last_seq == live.seq for b in (student, late)))
+        await until(lambda: all(manager.peers[id(b.ws)].last_seq == live.seq for b in (student, teacher, late)))
         assert not any(m['type'] == 'websocket.close' for b in (student, teacher, late) for m in b.outgoing)
     for browser in (student, teacher, late):
         manager.disconnect(browser.ws, 1)
@@ -265,7 +266,7 @@ async def check_freeze():
         task.cancel()
     await asyncio.gather(*receivers, return_exceptions=True)
     await manager.shutdown()
-    # Freeze while the next frame is queued for bandwidth: do not send that frame.
+    # Freeze while a student is behind: deliver the exact freeze target, then stop.
     manager, student = StreamManager(), Browser()
     await manager.connect(student.ws, 1)
     receiver = asyncio.create_task(student.consume())
@@ -280,15 +281,33 @@ async def check_freeze():
     await entered.wait()
     manager.set_frozen(True)
     release.set()
-    await asyncio.sleep(.05)
-    assert manager.peers[id(student.ws)].frames_sent == 1
-    manager.set_frozen(False)
     await until(lambda: manager.peers[id(student.ws)].last_seq == live.seq)
+    assert manager.peers[id(student.ws)].frames_sent == 2
+    frame[:] = 100
+    newer = store.update(frame, 70, (5, 5, True))
+    manager.publish(1, newer)
+    await asyncio.sleep(.05)
+    assert manager.peers[id(student.ws)].last_seq == live.seq
+    manager.set_frozen(False)
+    await until(lambda: manager.peers[id(student.ws)].last_seq == newer.seq)
     manager.disconnect(student.ws, 1)
     receiver.cancel()
     await asyncio.gather(receiver, return_exceptions=True)
     await manager.shutdown()
-    print('PASS: frozen final frame, live teacher preview, frozen late join, idempotence, static resume, and queued-frame freeze race without reconnect.')
+    # Each monitor retains its own frozen content; uncaptured screens cannot leak live pixels.
+    manager = StreamManager()
+    manager.publish(1, initial)
+    manager.publish(2, live)
+    manager.set_frozen(True)
+    manager.publish(1, newer)
+    manager.publish(2, newer)
+    manager.publish(3, newer)
+    assert manager.display_snapshot(1) is initial
+    assert manager.display_snapshot(2) is live
+    assert manager.display_snapshot(3) is None
+    manager.set_frozen(False)
+    assert all(manager.display_snapshot(m) is newer for m in (1, 2, 3))
+    print('PASS: same frozen teacher/student frame, frozen late join, idempotence, static resume, lagging viewer convergence, multi-monitor snapshots and no reconnect.')
 
 
 if __name__ == '__main__':

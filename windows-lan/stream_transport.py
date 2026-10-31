@@ -273,19 +273,14 @@ class StreamManager(ConnectionManager):
                 peer.enqueue_control(json.dumps({'type': 'identity', 'name': name}))
         super().register_viewer(ws, session_id, name, role)
 
-    def is_teacher(self, peer):
-        from app import state
-        token = peer.ws.query_params.get('admin_token')
-        return bool(token and token in state.admin_tokens)
+    def display_snapshot(self, monitor_id):
+        frames = self.frozen_frames if self.frozen else self.latest
+        return frames.get(monitor_id)
 
     def snapshot_for(self, peer):
-        if self.frozen and not self.is_teacher(peer):
-            # Existing viewers keep their own final frame. New viewers receive only
-            # the snapshot captured before freezing, never the live teacher preview.
-            if peer.last_seq:
-                return None
-            return self.frozen_frames.get(peer.monitor)
-        return self.latest.get(peer.monitor)
+        # Every viewer converges to the same frozen frame, including teachers,
+        # lagging students and connections opened after freezing.
+        return self.display_snapshot(peer.monitor)
 
     def set_frozen(self, enabled):
         if self.frozen == enabled:

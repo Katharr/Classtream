@@ -133,7 +133,7 @@ async def capture_loop(monitor_id, rect, manager, settings):
             if not manager.connections.get(monitor_id):
                 continue
             try:
-                snapshot = manager.latest.get(monitor_id)
+                snapshot = manager.display_snapshot(monitor_id)
                 meta = dict(type='meta', fps=rate,
                             target_fps=min(30, settings.fps), viewers=manager.total_viewers,
                             quality=settings.quality, session=settings.session_name,

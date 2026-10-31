@@ -80,17 +80,21 @@ export function connectScreen(url, key, canvas, handlers) {
     if (silent >= 5000) { recover(); return; }
     if (silent >= 3000) { showHealth(ws, 'interrupted', '画面中断，正在检测连接…'); return; }
     const meta = h.meta;
-    if (meta && (meta.capture_age_ms === null || meta.capture_age_ms + silent >= 3000)) {
+    const ahead = meta && (meta.stream_epoch !== h.epoch || meta.stream_seq > h.seq);
+    if (meta?.frozen && h.painted && !ahead && !state.paused) {
+      h.lastProgress = now;
+      showHealth(ws, 'frozen', state.myRole === 'host' ? '画面已冻结' : '教师已冻结画面'); return;
+    }
+    if (meta && !meta.frozen && (meta.capture_age_ms === null || meta.capture_age_ms + silent >= 3000)) {
       h.lastProgress = now;
       showHealth(ws, 'source', '教师画面暂不可用，请等待老师恢复'); return;
     }
     if (state.paused) {
       h.lastProgress = now; showHealth(ws, 'paused', '画面已暂停 · 可继续观看'); return;
     }
-    if (meta?.frozen && state.myRole !== 'host') {
-      h.lastProgress = now; showHealth(ws, 'frozen', '教师已冻结画面'); return;
+    if (meta?.frozen && !meta.stream_seq) {
+      h.lastProgress = now; showHealth(ws, 'waiting', '冻结时没有可用画面，请等待恢复共享'); return;
     }
-    const ahead = meta && (meta.stream_epoch !== h.epoch || meta.stream_seq > h.seq);
     if ((!h.painted || ahead) && now - h.lastProgress >= 5000) {
       recover('画面未能跟上，正在重新获取最新画面…'); return;
     }

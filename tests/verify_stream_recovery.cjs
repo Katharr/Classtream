@@ -71,11 +71,12 @@ const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
 
     await hostContext.request.post(base + '/api/screen/freeze', { headers, data: { enabled: true } });
     await Promise.all(students.map(page => waitPhase(page, 'frozen')));
-    assert.equal(await phase(host), 'live', 'teacher preview stays live while students freeze');
+    await waitPhase(host, 'frozen');
     await host.waitForTimeout(3500);
     assert.equal(attempts, afterRecoveryAttempts);
     await hostContext.request.post(base + '/api/screen/freeze', { headers, data: { enabled: false } });
     await Promise.all(students.map(page => waitPhase(page, 'live')));
+    await waitPhase(host, 'live');
 
     await students[1].evaluate(async () => (await import('/static/js/controls.js')).togglePause());
     await waitPhase(students[1], 'paused');
