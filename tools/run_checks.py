@@ -12,7 +12,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_CHECKS = (
     'verify_startup_recovery.py', 'verify_deployment_layout.py',
-    'verify_windows_adapter.py', 'verify_fast_capture.py',
+    'verify_windows_adapter.py', 'verify_mdns.py', 'verify_fast_capture.py',
     'verify_stream_transport.py', 'verify_student_nicknames.py', 'verify_discussion.py',
 )
 BROWSER_CHECKS = (

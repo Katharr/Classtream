@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from importlib.metadata import version
 from pathlib import Path
 from urllib.parse import parse_qs
+from lan_address import read_publication, student_addresses
 
 
 class LocalAdministration:
@@ -168,19 +169,21 @@ def create_application(public_url, fps=30, teacher_url=None):
             return JSONResponse({'ok': False}, status_code=400)
         except PermissionError:
             return JSONResponse({'ok': False}, status_code=401)
-    def current_public_url():
+    def current_addresses():
         if not http_mode:
-            return public_url
+            return dict(student_url=public_url + '/class', fallback_url=public_url + '/class',
+                        mdns_status='disabled')
         try:
             cfg = json.loads((deployment_home / 'config.json').read_text('utf-8-sig'))
-            return f"http://{ipaddress.IPv4Address(cfg['teacher_ip'])}:{int(cfg['http_port'])}"
+            cfg['teacher_ip'] = str(ipaddress.IPv4Address(cfg['teacher_ip']))
+            return student_addresses(cfg, read_publication(deployment_home))
         except (OSError, ValueError, KeyError):
-            return public_url
+            return dict(student_url=public_url, fallback_url=public_url, mdns_status='unavailable')
 
     @application.get('/lan-info')
     async def lan_info():
         from fastapi.responses import JSONResponse
-        return JSONResponse({'student_url': current_public_url() + '/class'}, headers=no_cache)
+        return JSONResponse(current_addresses(), headers=no_cache)
     scripts = {}
     for name in ("config", "stream", "voice", "main", "sidebar", "chat", "controls", "auth", "viewers"):
         scripts[name + ".js"] = (STATIC_DIR / "js" / (name + ".js")).read_text("utf-8")
@@ -363,6 +366,8 @@ function _reconnectGridCell(id, canvas, cell) {
 
     @application.get('/', response_class=HTMLResponse)
     async def index(request: Request):
+        if not request.query_params:
+            return await classroom()
         page = template
         if 'host' in request.query_params:
             page = re.sub(r'  <button class="btn" id="btn-pause".*?</button>', '', page, flags=re.S)
@@ -381,7 +386,7 @@ function _reconnectGridCell(id, canvas, cell) {
     async def javascript(name: str):
         if name in scripts:
             source = scripts[name].replace(json.dumps(public_url + '/class'),
-                                            json.dumps(current_public_url() + '/class'))
+                                            json.dumps(current_addresses()['student_url']))
             return Response(source, media_type="text/javascript", headers=no_cache)
         # Delegate unchanged modules to the original static-file mount.
         from fastapi.responses import FileResponse

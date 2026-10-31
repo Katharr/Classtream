@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='Classtream home 中文 ') as folder:
 from compat import create_application
 from fastapi.testclient import TestClient
 client = TestClient(create_application('http://192.0.2.99:8080'))
-assert client.get('/lan-info').json()['student_url'] == 'http://192.0.2.77:8080/class'
+assert client.get('/lan-info').json()['student_url'] == 'http://192.0.2.77'
 from pathlib import Path
 assert client.get('/classroom-ui/classroom.js').content == Path('classroom.js').read_bytes()
 '''], cwd=CODE, env=env, check=True)

@@ -16,6 +16,7 @@ import time
 import webbrowser
 import urllib.request
 import zipfile
+from lan_address import http_origin, student_addresses, validate_mdns
 
 ROOT = Path(__file__).resolve().parent
 HOME = Path(os.environ.get("CLASSTREAM_HOME") or ROOT).resolve()
@@ -31,7 +32,8 @@ def configuration():
     cfg = json.loads((HOME / "config.json").read_text("utf-8-sig"))
     cfg.setdefault("fps", 30)
     cfg.setdefault("mode", "http")
-    cfg.setdefault("http_port", 8080)
+    cfg.setdefault("http_port", 80)
+    validate_mdns(cfg)
     if cfg['mode'] not in ('http', 'https'):
         raise ValueError('mode must be http or https.')
     if type(cfg["fps"]) is not int or not 1 <= cfg["fps"] <= 60:
@@ -40,12 +42,14 @@ def configuration():
     if ip.version != 4 or ip.is_loopback or ip.is_unspecified or ip.is_multicast:
         raise ValueError("teacher_ip must be this PC's LAN IPv4 address.")
     for key in ("http_port", "https_port", "backend_port"):
-        if type(cfg[key]) is not int or not 1024 <= cfg[key] <= 65535:
-            raise ValueError(f"{key} must be an integer from 1024 to 65535.")
+        minimum = 1 if key == 'http_port' else 1024
+        if type(cfg[key]) is not int or not minimum <= cfg[key] <= 65535:
+            raise ValueError(f"{key} must be an integer from {minimum} to 65535.")
     cfg['public_port'] = cfg[cfg['mode'] + '_port']
     if cfg['public_port'] == cfg['backend_port']:
         raise ValueError('Public and local teacher ports must differ.')
-    cfg['public_url'] = f"{cfg['mode']}://{ip}:{cfg['public_port']}"
+    cfg['public_url'] = (http_origin(str(ip), cfg['public_port']) if cfg['mode'] == 'http'
+                         else f"https://{ip}:{cfg['public_port']}")
     cfg['teacher_url'] = f"http://127.0.0.1:{cfg['backend_port']}/?host=admin"
     return cfg
 
@@ -222,14 +226,23 @@ def update_network_address(cfg, addresses):
     temporary.write_text(json.dumps(raw, indent=2), 'utf-8')
     temporary.replace(HOME / 'config.json')
     updated = configuration()
-    ready = RUNTIME / 'ready.json'
-    data = json.loads(ready.read_text('utf-8'))
-    data['student_url'] = updated['public_url'] + '/class'
-    temporary = RUNTIME / 'ready.json.tmp'
-    temporary.write_text(json.dumps(data, indent=2), 'utf-8')
-    temporary.replace(ready)
-    print('NETWORK CHANGED: Student: ' + data['student_url'], flush=True)
+    print('NETWORK CHANGED: IP: ' + updated['teacher_ip'], flush=True)
     return updated
+
+
+def publish_ready(cfg, publisher):
+    publication = publisher.publication(cfg)
+    data = dict(mode=cfg['mode'], teacher_url=cfg['teacher_url'], pid=os.getpid(), **publication)
+    data.update(student_addresses(cfg, publication))
+    ready = RUNTIME / 'ready.json'
+    payload = json.dumps(data, indent=2)
+    if ready.exists() and ready.read_text('utf-8') == payload:
+        return
+    temporary = ready.with_suffix('.json.tmp')
+    temporary.write_text(payload, 'utf-8')
+    temporary.replace(ready)
+    print('Student: ' + data['student_url'], flush=True)
+    print('Backup: ' + data['fallback_url'], flush=True)
 
 
 def serve(cfg):
@@ -259,6 +272,7 @@ def serve(cfg):
 
 def start(cfg, open_browser=False, on_ready=None):
     from windows_job import ProcessJob
+    from mdns import Publisher
     if (RUNTIME / 'password-required').exists():
         raise RuntimeError('First-time password setup is incomplete. Run install.cmd before starting.')
     cfg = refresh_network_if_needed(cfg)
@@ -269,6 +283,7 @@ def start(cfg, open_browser=False, on_ready=None):
     stop_request.unlink(missing_ok=True)
     children = []
     job = ProcessJob()
+    publisher = Publisher()
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
         with (RUNTIME / "backend.log").open("a", encoding="utf-8") as backend_log, \
@@ -287,11 +302,9 @@ def start(cfg, open_browser=False, on_ready=None):
             else:
                 start_https(cfg, config_path, children, job, caddy_log, flags)
             (RUNTIME / 'launcher.pid').write_text(str(os.getpid()), 'ascii')
-            (RUNTIME / 'ready.json').write_text(json.dumps({
-                'mode': cfg['mode'], 'student_url': cfg['public_url'] + '/class',
-                'teacher_url': cfg['teacher_url'], 'pid': os.getpid()}, indent=2), 'utf-8')
+            publisher.sync(cfg)
+            publish_ready(cfg, publisher)
             print(f"\nREADY\nTeacher: {cfg['teacher_url']}")
-            print(f"Student: {cfg['public_url']}/class")
             print('HTTP: no student installation; microphone disabled.' if cfg['mode'] == 'http'
                   else f"Student certificate package: {RUNTIME / 'student-setup.zip'}")
             print('Keep this window open. Close it or press Ctrl+C to stop. Run start.cmd to restart.', flush=True)
@@ -308,12 +321,15 @@ def start(cfg, open_browser=False, on_ready=None):
                 on_ready()
             while True:
                 snapshot = RUNTIME / 'network-addresses.json'
+                addresses = None
                 if cfg['mode'] == 'http' and snapshot.exists():
                     try:
                         addresses = json.loads(snapshot.read_text('utf-8-sig'))
                         cfg = update_network_address(cfg, addresses)
                     except (OSError, ValueError):
                         pass  # Retry a transient file read on the next iteration.
+                publisher.sync(cfg, addresses)
+                publish_ready(cfg, publisher)
                 if stop_request.exists():
                     try:
                         stop_request.unlink()
@@ -327,6 +343,7 @@ def start(cfg, open_browser=False, on_ready=None):
                 time.sleep(0.5)
     finally:
         try:
+            publisher.close()
             for child in reversed(children):
                 if child.poll() is None:
                     child.terminate()

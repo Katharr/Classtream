@@ -40,7 +40,7 @@ INSTRUCTIONS = """Classtream Windows x64 离线依赖包（Python 3.14）
   offline\\
     manifest.json
     requirements-lock.txt
-    wheels\\               <- 34 个 wheel：33 个应用依赖 + pip
+    wheels\\               <- requirements-lock.txt 中的依赖 + pip
     installers\\           <- Python、VC++、可选 HTTPS 的 Caddy
 
 适用 Windows 10/11 Intel/AMD 64 位；不适用 ARM64、32 位 Windows 或其他 Python 小版本。

@@ -1,13 +1,13 @@
 # Classtream Windows 局域网教学版
 
-基于 [Mustafahubs/Classtream](https://github.com/Mustafahubs/Classtream) 的 Windows 教学部署版本。教师一键安装，学生通过固定 `/class` 网址直接观看，无需安装软件或证书。
+基于 [Mustafahubs/Classtream](https://github.com/Mustafahubs/Classtream) 的 Windows 教学部署版本。教师一键安装，学生通过 `http://live.local` 直接观看，无需安装软件或证书。局域网名称不可用时使用教师提供的 IP 备用地址。
 
 ## 快速开始
 
 1. 教师机使用 Windows 10/11、Intel/AMD x64，连接教学局域网。
 2. 下载 Release 中的 **Classtream-LAN-版本号-Win64.zip**，完整解压后双击根目录 **start.cmd**。主程序包不含依赖，首次自动联网准备 Python 3.14 x64、独立依赖环境和必要的微软 VC++ 运行库。
 3. 按提示设置教师密码；多网卡时选择学生可访问的教学网络；允许运行库或防火墙的管理员提示。
-4. 登录自动打开的教师页，在顶部课堂名菜单中选择 **创建新课堂**，点击右上角 **邀请学生**，将 `http://教师当前IP:8080/class` 发给学生。
+4. 登录自动打开的教师页，在顶部课堂名菜单中选择 **创建新课堂**，点击右上角 **邀请学生**，将显示的学生网址发给学生，默认 `http://live.local`。
 5. 学生用浏览器打开即可观看，系统自动分配昵称。
 
 以后双击 **start.cmd** 上课，关闭启动窗口或按 Ctrl+C 下课；再次双击自动回收本项目旧进程并重启。保持教师页在线。没有离线包时首次安装需要联网；首次密码、多网卡选择和管理员提示仍需教师操作。维护脚本位于 `windows-lan/`。GitHub 自动生成的 Source code 是开发源码，教师部署请使用版本化 Win64 附件。
@@ -15,6 +15,8 @@
 下载慢或无法上网时，将配套的 `Classtream-Dependencies-Win64-Py314.zip` 解压，把其中 **offline 文件夹和 install.ps1** 一起放入本仓库的 **windows-lan** 目录，覆盖旧 `install.ps1`，再双击根目录 `start.cmd`。看到 `OFFLINE MODE` 即使用本地依赖。包内包含 Python、全部应用依赖、VC++ 运行库和可选 Caddy；只适用于 Windows x64 / Python 3.14。不要把 ZIP 原文件直接放进去，也不要复制其他教师的 `.venv` 或 runtime。
 
 仓库只保存源码、脚本和说明，不上传依赖包。安装脚本自动检测 `windows-lan/offline`：存在时校验并使用离线依赖，不存在时自动在线下载。离线目录及 ZIP、wheel、EXE 均已加入 Git 忽略规则。
+
+本仓库默认学生 HTTP 端口为 80，网址无需端口或 `/class`。`live.local` 使用 mDNS，仅在支持组播且设备能够互访的教学网络中有效；名称打不开时使用“邀请学生”中的 IP 备用地址。已发布旧包以包内说明为准。旧部署升级需安装新版锁定依赖、更新防火墙并将本机 `http_port` 改为 80；旧版离线依赖包不能与新版依赖锁混用。配置与升级说明见 [完整说明](windows-lan/README.md)。
 
 ## 中文课堂界面
 
@@ -26,8 +28,8 @@
 
 ## 本版功能
 
-- 每次启动检测本机有效 IPv4；单一新地址自动更新，多候选地址时提示选择。HTTP 模式运行中监测 IP 变化并刷新教师页链接。
-- 学生使用固定 `/class` 路径，课堂 token 更新后刷新同一网址即可。
+- 每次启动检测本机有效 IPv4；单一新地址自动更新，多候选地址时提示选择。HTTP 模式运行中监测 IP 变化并更新名称发布和教师页链接。
+- 学生使用 `http://live.local`，打开首页直接加入当前课堂；原 `/class` 路径仍可用，课堂 token 更新后刷新同一网址即可。名称重名、断网或发布失败时回退到 IP 地址。
 - 修复局域网 HTTP 页面缺少 `crypto.randomUUID()` 和 Clipboard API 时的兼容问题。
 - HTTP 教师后台仅允许回环访问；学生端不请求麦克风。屏幕、文字聊天与文件通过可信局域网使用。
 - DXGI/GPU 桌面采集、Windows 高精度帧间等待、JPEG 免二次 WebSocket 压缩；不支持 DXGI 时回退 MSS。

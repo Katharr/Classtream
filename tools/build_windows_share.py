@@ -8,15 +8,16 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "windows-lan"
 FILES = (
     "compat.py", "classroom_ui.py", "classroom.css", "classroom.js", "classroom-errors.js", "discussion.py", "discussion.js", "teacher-shortcuts.js", "teacher_hotkeys.py", "lan.py", "recover-service.ps1", "startup_lock.py", "windows_job.py", "fast_capture.py", "stream_transport.py", "stream-client.js", "config.json",
-    "screen-pan.js", "requirements.txt", "requirements-lock.txt", "setup.cmd", "start.cmd",
+    "screen-pan.js", "lan_address.py", "mdns.py", "requirements.txt", "requirements-lock.txt", "setup.cmd", "start.cmd",
     "stop.cmd", "check.cmd", "allow-firewall.cmd", "allow-firewall.ps1",
     "README.md", "先读我.txt", "LICENSE", "browser-compat.js", "install.cmd",
     "install.ps1", "password.cmd", "refresh-network.ps1", "教师端说明.md",
     "学生端说明.md", "真机验收.md", "bin/CADDY-LICENSE.txt",
     "bin/CADDY-README.md", "bin/CADDY-VERIFICATION.txt",
 )
-DEFAULTS = dict(mode="http", teacher_ip="192.0.2.1", http_port=8080,
-                https_port=8443, backend_port=8000, fps=30)
+DEFAULTS = dict(mode="http", teacher_ip="192.0.2.1", http_port=80,
+                https_port=8443, backend_port=8000, fps=30,
+                mdns_enabled=True, mdns_hostname='live')
 
 
 def build():

@@ -1,8 +1,10 @@
 {
   "mode": "http",
   "teacher_ip": "192.0.2.1",
-  "http_port": 8080,
+  "http_port": 80,
   "https_port": 8443,
   "backend_port": 8000,
-  "fps": 30
+  "fps": 30,
+  "mdns_enabled": true,
+  "mdns_hostname": "live"
 }

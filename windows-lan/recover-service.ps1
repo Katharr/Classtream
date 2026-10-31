@@ -10,7 +10,8 @@ $runtime = Join-Path $DeploymentRoot 'runtime'
 $config = Get-Content -LiteralPath (Join-Path $DeploymentRoot 'config.json') -Raw | ConvertFrom-Json
 if ($config.mode -notin @('http', 'https')) { throw 'Invalid classroom mode.' }
 $Ports = @([int]$config.backend_port, [int]$config.($config.mode + '_port'))
-if (@($Ports | Where-Object { $_ -lt 1024 -or $_ -gt 65535 }).Count) { throw 'Invalid classroom ports.' }
+$publicMinimum = if ($config.mode -eq 'http') { 1 } else { 1024 }
+if ($Ports[0] -lt 1024 -or $Ports[0] -gt 65535 -or $Ports[1] -lt $publicMinimum -or $Ports[1] -gt 65535) { throw 'Invalid classroom ports.' }
 $python = Join-Path $DeploymentRoot '.venv\Scripts\python.exe'
 $scripts = @((Join-Path $CodeRoot 'lan.py'), (Join-Path $DeploymentRoot 'lan.py'))
 

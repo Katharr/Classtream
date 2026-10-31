@@ -4,13 +4,29 @@ export function watchClassroomAddress() {
     try {
       const response = await fetch('/lan-info', {cache: 'no-store'});
       if (!response.ok) return;
-      const {student_url} = await response.json();
+      const {student_url, fallback_url, mdns_status} = await response.json();
       for (const id of ['current-session-link', 'link-modal-url']) {
         const element = document.getElementById(id);
         if (element && /^https?:/.test(element.textContent.trim())) element.textContent = student_url;
       }
+      const url = document.getElementById('link-modal-url');
+      if (url && fallback_url) {
+        let backup = document.getElementById('lan-backup-address');
+        if (!backup) {
+          backup = document.createElement('p');
+          backup.id = 'lan-backup-address';
+          backup.style.cssText = 'font-size:13px;overflow-wrap:anywhere;margin-top:10px';
+          url.insertAdjacentElement('afterend', backup);
+        }
+        backup.textContent = mdns_status === 'published'
+          ? `名称打不开时，使用备用地址：${fallback_url}`
+          : mdns_status === 'conflict'
+            ? '局域网名称已被占用，请使用上方 IP 地址。'
+            : mdns_status === 'disabled' ? '' : '局域网名称暂不可用，请使用上方 IP 地址。';
+      }
     } catch { /* reconnect after a temporary network interruption */ }
   };
+  update();
   setInterval(update, 3000);
 }
 

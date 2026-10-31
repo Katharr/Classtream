@@ -188,7 +188,7 @@ try {
         Install-VisualCppRuntime $runtime
         if (-not (Test-OpenCV $venvPython)) { throw 'OpenCV still cannot load. Check install.log/vc-runtime-install.log; restart Windows if requested. Windows N editions may require the Media Feature Pack.' }
     }
-    & $venvPython -c "import mss, pyautogui, pydantic_core, uvicorn, websockets, importlib.util; assert importlib.util.find_spec('dxcam'); print('Native/application dependencies OK')"
+    & $venvPython -c "import mss, pyautogui, pydantic_core, uvicorn, websockets, zeroconf, ifaddr, importlib.util; assert importlib.util.find_spec('dxcam'); print('Native/application dependencies OK')"
     if ($LASTEXITCODE -ne 0) { throw 'Application dependency import failed. See runtime/install.log.' }
 
     if ($DependenciesOnly) {

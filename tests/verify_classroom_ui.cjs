@@ -75,7 +75,7 @@ const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
     const student=await studentContext.newPage();attach(student);
     let settingsWrites=0;
     student.on('request',r=>{if(r.url().endsWith('/api/settings') && r.method()==='POST')settingsWrites++;});
-    await student.goto(base+'/class');
+    await student.goto(base+'/');
     await student.waitForFunction(()=>document.getElementById('identity-btn').textContent.startsWith('小'));
     const nickname=await student.locator('#identity-btn').innerText();
     assert.equal(await student.locator('#name-modal,#name-input').count(),0);
@@ -171,11 +171,17 @@ const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
     assert.ok(commands.x>=0 && commands.x+commands.width<=320);
     await host.keyboard.press('Escape');
     await host.setViewportSize({width:1440,height:960});
+    await host.route('**/lan-info', route=>route.fulfill({json:{
+      student_url:'http://live.local',fallback_url:base,mdns_status:'published',
+    }}));
     await host.locator('#classroom-menu-btn').click();
     await host.locator('#classroom-new-btn').click();
     await host.locator('#teacher-new-name').fill('下一节课堂');
     await host.locator('#teacher-new-confirm').click();
     await host.locator('#link-modal').waitFor({state:'visible'});
+    await host.waitForFunction(()=>document.getElementById('lan-backup-address')?.textContent.includes('备用地址'));
+    assert.equal(await host.locator('#link-modal-url').innerText(),'http://live.local');
+    assert.ok((await host.locator('#lan-backup-address').innerText()).includes(base));
     assert.equal(await host.locator('#session-name').innerText(),'下一节课堂');
     await host.locator('#close-link-modal').click();
     await host.locator('#classroom-menu-btn').click();

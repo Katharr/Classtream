@@ -13,7 +13,8 @@ $config = Get-Content -LiteralPath (Join-Path $DeploymentRoot 'config.json') -Ra
 $mode = [string]$config.mode
 if ($mode -notin @('http', 'https')) { throw 'Invalid mode in config.json.' }
 $port = if ($mode -eq 'http') { [int]$config.http_port } else { [int]$config.https_port }
-if ($port -lt 1024 -or $port -gt 65535) { throw 'Invalid classroom port.' }
+$minimum = if ($mode -eq 'http') { 1 } else { 1024 }
+if ($port -lt $minimum -or $port -gt 65535) { throw 'Invalid classroom port.' }
 $ruleName = 'Classtream-LAN-' + $mode.ToUpperInvariant() + '-' + $port
 $localAddress = if ($mode -eq 'http') { 'Any' } else { [string]$config.teacher_ip }
 if (-not (Get-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue)) {
@@ -24,5 +25,14 @@ if (-not (Get-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue)) {
     Get-NetFirewallRule -Name $ruleName | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -LocalAddress $localAddress -RemoteAddress LocalSubnet | Out-Null
 }
 Write-Host ('Allowed local-subnet TCP ' + $port + ' at ' + $config.teacher_ip)
+if ($mode -eq 'http' -and $config.mdns_enabled -ne $false) {
+    $mdnsRule = 'Classtream-LAN-mDNS'
+    $python = Join-Path $DeploymentRoot '.venv\Scripts\python.exe'
+    if (Get-NetFirewallRule -Name $mdnsRule -ErrorAction SilentlyContinue) {
+        Remove-NetFirewallRule -Name $mdnsRule | Out-Null
+    }
+    New-NetFirewallRule -Name $mdnsRule -DisplayName $mdnsRule -Direction Inbound -Action Allow -Protocol UDP -LocalPort 5353 -Program $python -RemoteAddress LocalSubnet -Profile Any | Out-Null
+    Write-Host 'Allowed local-subnet mDNS (UDP 5353) for the classroom Python.'
+}
 New-Item -ItemType Directory -Force -Path (Join-Path $DeploymentRoot 'runtime') | Out-Null
 ('Allowed TCP {0} on {1}; remote=LocalSubnet' -f $port, $config.teacher_ip) | Set-Content -LiteralPath (Join-Path $DeploymentRoot 'runtime\firewall-ready.txt') -Encoding UTF8
