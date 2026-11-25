@@ -6,14 +6,14 @@ const nav = document.querySelector('#nav');
 const account = document.querySelector('#account');
 const tokenKey = 'pystream_admin_token';
 const verdicts = {
-  queued: '排队中', running: '评测中', finished: '已完成', accepted: '通过', partial: '部分得分',
+  queued: '排队中', running: '评测中', finished: '已完成', executed: '运行完成', accepted: '通过', partial: '部分得分',
   compile_error: '编译错误', runtime_error: '运行错误', timeout: '超时', memory_limit: '超出内存限制',
   wrong_answer: '答案错误', output_limit: '输出超限', judge_error: '评测环境错误'
 };
 let identity;
 let adminToken = teacher ? localStorage.getItem(tokenKey) : null;
 let revision = 0;
-let timer;
+const pollTokens = new WeakMap();
 
 function element(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -143,15 +143,17 @@ function rows(items, draw, fallback) {
 }
 
 function sheetList(sheets) {
-  return [heading('题单', teacher ? link('新建题单', '#sheets/new', 'button primary') : null),
-    rows(sheets, sheet => element('a', { href: '#sheets/' + sheet.id, class: 'sheet-tile ' + (sheet.open ? 'open' : 'closed') },
-      element('strong', {}, sheet.title), sheetBadge(sheet)), '暂无题单')];
+  return element('section', { class: 'catalog sheet-catalog' },
+    heading('题单', teacher ? link('新建题单', '#sheets/new', 'button primary') : null),
+    rows(sheets, sheet => element('a', { href: '#sheets/' + sheet.id, class: 'row-link sheet-tile' },
+      element('strong', {}, sheet.title), sheetBadge(sheet)), '暂无题单'));
 }
 
 function studentSheet(sheet) {
-  return [link('返回题单', '#sheets', 'back'), heading(sheet.title, sheetBadge(sheet)),
-    rows(sheet.problems, (problem, index) => element('a', { class: 'row-link', href: `#sheets/${sheet.id}/${problem.id}` },
-      element('span', {}, `${index + 1}. ${problem.title}`), element('span', { class: 'meta' }, `${problem.max_score} 分`)), '题单暂无题目')];
+  return [link('返回题单', '#sheets', 'back'), element('section', { class: 'catalog' },
+    heading(sheet.title, sheetBadge(sheet)), rows(sheet.problems, (problem, index) =>
+      element('a', { class: 'row-link problem-row', href: `#sheets/${sheet.id}/${problem.id}` },
+        element('strong', {}, `${index + 1}. ${problem.title}`), element('span', { class: 'meta' }, `${problem.max_score} 分`)), '题单暂无题目'))];
 }
 
 function timeText(seconds) {
@@ -160,83 +162,230 @@ function timeText(seconds) {
 
 function mark(record) {
   const key = record.verdict || record.status;
-  const color = key === 'accepted' ? 'green' : ['partial', 'queued', 'running'].includes(key) ? 'yellow' : 'neutral';
+  const color = ['accepted', 'executed'].includes(key) ? 'green'
+    : key === 'partial' ? 'yellow'
+    : ['queued', 'running', 'finished'].includes(key) || !Object.hasOwn(verdicts, key) ? 'neutral' : 'red';
   return badge(verdicts[key] || '未知状态', color);
 }
 
-function result(record) {
+function result(record, showOutputHeading = true) {
   return [element('div', { class: 'result-title' }, mark(record),
     record.kind === 'judge' && record.score !== undefined ? element('strong', {}, `${record.score} / ${record.max_score} 分`) : null),
   record.detail ? pre(record.detail) : null,
-  record.output !== undefined ? element('section', {}, element('h3', {}, '程序输出'), pre(record.output)) : null,
+  record.output !== undefined ? (showOutputHeading
+    ? element('section', {}, element('h3', {}, '程序输出'), pre(record.output)) : pre(record.output)) : null,
   record.kind === 'judge' && record.cases?.length ? element('ol', { class: 'test-results' }, record.cases.map(group =>
     element('li', {}, element('span', {}, `${group.points} 分组`), mark(group)))) : null];
 }
 
-function pollSubmission(id, update, current, notice) {
-  clearTimeout(timer);
-  timer = setTimeout(async () => {
-    if (current !== revision) return;
+function pollSubmission(id, area, current) {
+  const { updates, notice, showOutputHeading } = area;
+  const token = {};
+  pollTokens.set(updates, token);
+  const active = () => current === revision && pollTokens.get(updates) === token;
+  async function poll() {
+    if (!active()) return;
     try {
       const record = await api('/submissions/' + id);
-      if (current !== revision) return;
-      update.replaceChildren(...result(record).filter(Boolean));
-      if (record.status !== 'finished') pollSubmission(id, update, current, notice);
+      if (!active()) return;
+      updates.replaceChildren(...result(record, showOutputHeading).filter(Boolean));
+      if (record.status !== 'finished') setTimeout(poll, 750);
     } catch (error) {
-      if (current !== revision) return;
+      if (!active()) return;
       feedback(notice, error.message);
-      if (error.status !== 401 && error.status !== 403 && error.status !== 404) pollSubmission(id, update, current, notice);
-    }
-  }, 750);
-}
-
-function studentProblem(problem, sheetId, current) {
-  const sample = element('div', { class: 'samples' },
-    element('section', {}, element('h3', {}, '样例输入'), pre(problem.sample_input)),
-    element('section', {}, element('h3', {}, '样例输出'), pre(problem.sample_output)));
-  const statement = element('article', { class: 'paper' }, element('h2', {}, '题面'),
-    element('p', { class: 'statement' }, problem.statement), sample);
-  const headingRow = heading(problem.title, sheetBadge(problem));
-  const details = element('p', { class: 'meta limits' }, `时限 ${problem.time_ms} ms　内存 ${problem.memory_mb} MB　满分 ${problem.max_score}`);
-  if (!problem.open) return [link('返回题单', '#sheets/' + sheetId, 'back'), headingRow, details, statement];
-
-  const notice = errorLine();
-  const updates = element('div', { class: 'judge-result', 'aria-live': 'polite' });
-  const draft = `oj-draft:${identity.id}:${problem.id}`;
-  const editor = element('textarea', { id: 'source', class: 'editor', maxlength: 65536, spellcheck: 'false',
-    autocapitalize: 'off', autocomplete: 'off', oninput: event => sessionStorage.setItem(draft, event.target.value) });
-  editor.value = sessionStorage.getItem(draft) || '';
-  const sampleButton = button('测试样例', () => send('sample'));
-  const judgeButton = button('提交评测', () => send('judge'), 'button primary');
-  const reloadButton = button('刷新题面', () => void render());
-  reloadButton.hidden = true;
-  let waiting = false;
-  async function send(kind) {
-    if (waiting) return;
-    if (!editor.value.trim()) {
-      feedback(notice, '请输入 C++17 源码');
-      editor.focus();
-      return;
-    }
-    waiting = sampleButton.disabled = judgeButton.disabled = true;
-    feedback(notice, '');
-    try {
-      const submission = await api(`/sheets/${sheetId}/problems/${problem.id}/submissions`, 'POST',
-        { kind, source: editor.value, version: problem.version });
-      if (current !== revision) return;
-      updates.replaceChildren(mark(submission), link('查看提交', '#submissions/' + submission.id));
-      pollSubmission(submission.id, updates, current, notice);
-    } catch (error) {
-      reloadButton.hidden = error.code !== 'problem_version_changed';
-      feedback(notice, error.message);
-    } finally {
-      waiting = sampleButton.disabled = judgeButton.disabled = false;
+      if (![401, 403, 404].includes(error.status)) setTimeout(poll, 750);
     }
   }
-  return [link('返回题单', '#sheets/' + sheetId, 'back'), headingRow, details,
-    element('div', { class: 'workspace' }, statement, element('section', { class: 'code-panel' },
-      element('label', { for: 'source', class: 'code-label' }, 'C++17 源码'), editor,
-      element('div', { class: 'actions' }, sampleButton, judgeButton, reloadButton), notice, updates))];
+  setTimeout(poll, 750);
+}
+
+function sheetContext(sheet, problem) {
+  const problemLinks = sheet.problems.map((item, index) => {
+    const attributes = { href: `#sheets/${sheet.id}/${item.id}`, 'aria-current': item.id === problem.id ? 'page' : undefined };
+    return element('li', {}, element('a', attributes,
+      element('span', { class: 'problem-number' }, `T${index + 1}`), element('span', {}, item.title)));
+  });
+  return element('aside', { class: 'sheet-context', 'aria-labelledby': 'sheet-context-title' },
+    element('h2', { id: 'sheet-context-title', class: 'panel-title' }, '题单信息'),
+    element('div', { class: 'sheet-context-body' },
+      element('div', { class: 'sheet-context-heading' },
+        link(sheet.title, `#sheets/${sheet.id}`, 'sheet-context-link'), sheetBadge(problem)),
+      element('h3', {}, '题目列表'), element('ol', { class: 'sheet-problems' }, problemLinks)));
+}
+
+function problemPaper(problem, className) {
+  const sample = element('div', { class: 'samples problem-samples' },
+    element('section', {}, element('h3', {}, '样例输入'), pre(problem.sample_input)),
+    element('section', {}, element('h3', {}, '样例输出'), pre(problem.sample_output)));
+  return element('article', { class: className },
+    element('header', { class: 'problem-intro' }, title(problem.title),
+      element('p', { class: 'meta' }, `时限 ${problem.time_ms} ms　内存 ${problem.memory_mb} MB　满分 ${problem.max_score}`)),
+    element('h2', {}, '题目描述'), element('p', { class: 'statement' }, problem.statement), sample);
+}
+
+function studentProblem(problem, sheet, current) {
+  return [link('返回题单', `#sheets/${sheet.id}`, 'back mobile-sheet-back'),
+    element('div', { class: 'problem-layout' },
+      element('div', { class: 'problem-main' }, problemPaper(problem, 'paper problem-paper'),
+        problem.open ? submissionPanel(problem, sheet.id, current) : null),
+      sheetContext(sheet, problem))];
+}
+
+const cppTypes = new Set('auto bool char char16_t char32_t double float int long short signed unsigned void wchar_t'.split(' '));
+const cppKeywords = new Set([
+  'alignas alignof and and_eq asm bitand bitor break case catch class compl const constexpr const_cast continue',
+  'decltype default delete do dynamic_cast else enum explicit export extern false for friend goto if inline mutable',
+  'namespace new noexcept not not_eq nullptr operator or or_eq private protected public register reinterpret_cast',
+  'return sizeof static static_assert static_cast struct switch template this thread_local throw true try typedef',
+  'typeid typename union using virtual volatile while xor xor_eq'
+].join(' ').split(' '));
+const cppTokens = new RegExp([
+  String.raw`(?<directive>^[\t ]*#[\t ]*(?:include\b[\t ]+<[^>\n]*>|[A-Za-z_]\w*))`,
+  String.raw`(?<comment>//(?:\\\n|[^\n])*|/\*[\s\S]*?(?:\*/|(?![\s\S])))`,
+  String.raw`(?<string>(?:u8|u|U|L)?R"(?<delimiter>[^\s()\\]{0,16})\([\s\S]*?(?:\)\k<delimiter>"|(?![\s\S]))` +
+  String.raw`|(?:u8|u|U|L)?(?:"(?:\\[\s\S]|[^"\\\n])*"?|'(?:\\[\s\S]|[^'\\\n])*'?))`,
+  String.raw`(?<number>(?:[0-9]|\.[0-9])(?:[eEpP][+-]|'\p{ID_Continue}|[.\p{ID_Continue}])*)`,
+  String.raw`(?<word>[_\p{ID_Start}]\p{ID_Continue}*)`
+].join('|'), 'gmu');
+
+function highlightCpp(source) {
+  const fragment = document.createDocumentFragment();
+  let offset = 0;
+  for (const { 0: text, index, groups } of source.matchAll(cppTokens)) {
+    const kind = groups.directive ? 'directive' : groups.comment ? 'comment' : groups.string ? 'string' :
+      groups.number ? 'number' : cppTypes.has(text) ? 'type' : cppKeywords.has(text) ? 'keyword' : null;
+    if (!kind) continue;
+    if (index > offset) fragment.append(source.slice(offset, index));
+    fragment.append(element('span', { class: 'syntax-' + kind }, text));
+    offset = index + text.length;
+  }
+  fragment.append(source.slice(offset));
+  if (source.endsWith('\n')) fragment.append('\u200b');
+  return fragment;
+}
+
+function sourceEditor(id, value, onEdit, fullscreen = false) {
+  const input = element('textarea', { id, class: 'editor', maxlength: 65536, spellcheck: 'false',
+    autocapitalize: 'off', autocomplete: 'off', wrap: fullscreen ? 'off' : 'soft',
+    'aria-label': fullscreen ? 'C++17 源码' : undefined, autofocus: fullscreen });
+  const syntax = element('div', { class: 'editor-syntax', 'aria-hidden': 'true', tabindex: '-1' });
+  const surface = element('div', { class: 'editor-surface' }, syntax, input);
+  const lineNumbers = fullscreen ? element('pre', { class: 'debug-line-numbers', 'aria-hidden': 'true' }) : null;
+
+  function syncScroll() {
+    syntax.scrollTop = input.scrollTop;
+    syntax.scrollLeft = input.scrollLeft;
+    if (lineNumbers) lineNumbers.scrollTop = input.scrollTop;
+  }
+  function paint() {
+    syntax.replaceChildren(highlightCpp(input.value));
+    if (lineNumbers) {
+      const count = 1 + (input.value.match(/\n/g)?.length || 0);
+      lineNumbers.textContent = Array.from({ length: count }, (_, index) => index + 1).join('\n');
+    }
+    syncScroll();
+  }
+  function setValue(source) {
+    input.value = source;
+    paint();
+  }
+  input.addEventListener('input', () => {
+    paint();
+    onEdit(input.value);
+  });
+  input.addEventListener('scroll', syncScroll);
+  setValue(value);
+  const node = fullscreen ? element('div', { class: 'debug-source' }, lineNumbers, surface) : surface;
+  return { input, node, setValue };
+}
+
+function evaluationArea(editor, showOutputHeading = true) {
+  const notice = errorLine();
+  const updates = element('div', { class: 'judge-result', 'aria-live': 'polite' });
+  const reloadButton = button('刷新题面', () => void render());
+  reloadButton.hidden = true;
+  return { editor, notice, updates, reloadButton, showOutputHeading, pending: false };
+}
+
+function debugDialog(problem, area, run, submit) {
+  const input = element('textarea', { id: 'debug-input', maxlength: 65536, spellcheck: 'false' });
+  const inputLabel = element('label', { for: input.id, class: 'debug-pane-title' });
+  const expected = pre(problem.sample_output);
+  const sampleButton = button('题目样例', () => showInput(true));
+  const customButton = button('自定义输入', () => { showInput(false); input.focus(); });
+  let customInput = '';
+  function showInput(sample) {
+    sampleButton.setAttribute('aria-pressed', sample);
+    customButton.setAttribute('aria-pressed', !sample);
+    inputLabel.textContent = sample ? '样例输入' : '自定义输入';
+    input.readOnly = sample;
+    input.value = sample ? problem.sample_input : customInput;
+    expected.hidden = !sample;
+  }
+  input.addEventListener('input', () => { customInput = input.value; });
+  showInput(true);
+
+  const data = element('div', { class: 'debug-data' },
+    element('section', { class: 'debug-pane' }, inputLabel, input),
+    element('section', { class: 'debug-pane' }, element('h3', { class: 'debug-pane-title' }, '预期输出'), expected),
+    element('section', { class: 'debug-pane' }, element('h3', { class: 'debug-pane-title' }, '代码运行结果'),
+      element('div', { class: 'debug-result' }, area.notice, area.updates)));
+  const toolbar = element('footer', { class: 'debug-toolbar' },
+    element('div', { class: 'debug-actions', role: 'group', 'aria-label': '输入方式' }, sampleButton, customButton),
+    element('div', { class: 'debug-actions' }, area.reloadButton, element('span', { class: 'debug-language' }, 'C++17'),
+      button('在线运行', event => run(event, input.readOnly ? null : input.value), 'button debug-run'),
+      button('提交评测', submit)));
+  const dialog = element('dialog', { class: 'debug-dialog', 'aria-label': '在线调试' },
+    element('header', { class: 'debug-header' }, element('span', { class: 'debug-brand' }, '课堂 OJ'),
+      element('h2', { class: 'debug-title' }, problem.title), button('返回题目详情', () => dialog.close())),
+    element('div', { class: 'debug-body' },
+      element('section', { class: 'debug-statement', tabindex: '0', 'aria-label': '题面' }, problemPaper(problem, 'debug-paper')),
+      element('section', { class: 'debug-workspace', 'aria-label': '代码工作区' },
+        area.editor.node, data, toolbar)));
+  return dialog;
+}
+
+function submissionPanel(problem, sheetId, current) {
+  const draft = `oj-draft:${identity.id}:${problem.id}`;
+  const initialSource = sessionStorage.getItem(draft) || '';
+  function saveDraft(source, otherEditor) {
+    otherEditor.setValue(source);
+    sessionStorage.setItem(draft, source);
+  }
+  const main = evaluationArea(sourceEditor('source', initialSource, source => saveDraft(source, debug.editor)));
+  const debug = evaluationArea(sourceEditor('debug-source', initialSource, source => saveDraft(source, main.editor), true), false);
+
+  async function send(kind, area, control, customInput = null) {
+    if (area.pending) return;
+    if (!area.editor.input.value.trim()) {
+      feedback(area.notice, '请输入 C++17 源码');
+      area.editor.input.focus();
+      return;
+    }
+    area.pending = control.disabled = true;
+    feedback(area.notice, '');
+    try {
+      const payload = { kind, source: area.editor.input.value, version: problem.version };
+      if (customInput !== null) payload.custom_input = customInput;
+      const submission = await api(`/sheets/${sheetId}/problems/${problem.id}/submissions`, 'POST', payload);
+      if (current !== revision) return;
+      area.updates.replaceChildren(mark(submission), link('查看提交', '#submissions/' + submission.id));
+      pollSubmission(submission.id, area, current);
+    } catch (error) {
+      area.reloadButton.hidden = error.code !== 'problem_version_changed';
+      feedback(area.notice, error.message);
+    } finally {
+      area.pending = control.disabled = false;
+    }
+  }
+  const dialog = debugDialog(problem, debug, (event, input) => send('sample', debug, event.currentTarget, input),
+    event => send('judge', debug, event.currentTarget));
+  return element('section', { class: 'submission-panel', 'aria-labelledby': 'submission-panel-title' },
+    element('h2', { id: 'submission-panel-title', class: 'panel-title' }, '代码提交区域'),
+    element('div', { class: 'code-panel' }, element('label', { for: 'source', class: 'code-label' }, 'C++17 源码'), main.editor.node,
+      element('div', { class: 'actions' }, button('提交评测', event => send('judge', main, event.currentTarget), 'button primary'),
+        button('进入在线调试', () => dialog.showModal()),
+        button('测试样例', event => send('sample', main, event.currentTarget)), main.reloadButton), main.notice, main.updates), dialog);
 }
 
 function submissionList(records, before) {
@@ -254,10 +403,11 @@ function submissionDetail(record, current) {
   const notice = errorLine();
   const display = element('div', { class: 'judge-result', 'aria-live': 'polite' }, result(record));
   if (record.status !== 'finished') pollSubmission(record.id, display, current, notice);
-  return [link('返回提交记录', '#submissions', 'back'), title(record.title),
-    element('p', { class: 'meta' }, `${teacher ? record.username + '　' : ''}${timeText(record.created_at)}　${record.kind === 'sample' ? '样例' : '评测'}　`,
-      teacher ? link(`题目版本 v${record.version}`, `#problems/${record.problem_id}/${record.version}`) : `题目版本 v${record.version}`),
-    display, notice, element('h2', {}, '提交源码'), pre(record.source)];
+  return [link('返回提交记录', '#submissions', 'back'),
+    element('article', { class: 'paper submission-detail' }, title(record.title),
+      element('p', { class: 'meta' }, `${teacher ? record.username + '　' : ''}${timeText(record.created_at)}　${record.kind === 'sample' ? '样例' : '评测'}　`,
+        teacher ? link(`题目版本 v${record.version}`, `#problems/${record.problem_id}/${record.version}`) : `题目版本 v${record.version}`),
+      display, notice, element('h2', {}, '提交源码'), pre(record.source))];
 }
 
 function roster(data) {
@@ -283,9 +433,9 @@ function roster(data) {
 }
 
 function teacherProblems(problems) {
-  return [heading('题库', link('新建题目', '#problems/new', 'button primary')),
-    rows(problems, problem => element('a', { class: 'row-link', href: '#problems/' + problem.id },
-      element('strong', {}, problem.title), element('span', { class: 'meta' }, `v${problem.version} · ${problem.max_score} 分`)), '暂无题目')];
+  return element('section', { class: 'catalog' }, heading('题库', link('新建题目', '#problems/new', 'button primary')),
+    rows(problems, problem => element('a', { class: 'row-link problem-row', href: '#problems/' + problem.id },
+      element('strong', {}, problem.title), element('span', { class: 'meta' }, `v${problem.version} · ${problem.max_score} 分`)), '暂无题目'));
 }
 
 function problemEditor(problem) {
@@ -333,10 +483,11 @@ function problemEditor(problem) {
 
 function problemVersion(problem) {
   return [link('编辑当前版本', '#problems/' + problem.id, 'back'), heading(problem.title, badge('v' + problem.version, 'neutral')),
-    element('p', { class: 'statement' }, problem.statement),
-    element('div', { class: 'pair' }, element('section', {}, element('h3', {}, '样例输入'), pre(problem.sample_input)),
-      element('section', {}, element('h3', {}, '样例输出'), pre(problem.sample_output))),
-    element('p', { class: 'meta' }, `${problem.time_ms} ms　${problem.memory_mb} MB`),
+    element('article', { class: 'paper' },
+      element('p', { class: 'meta' }, `时限 ${problem.time_ms} ms　内存 ${problem.memory_mb} MB`),
+      element('p', { class: 'statement' }, problem.statement),
+      element('div', { class: 'samples' }, element('section', {}, element('h3', {}, '样例输入'), pre(problem.sample_input)),
+        element('section', {}, element('h3', {}, '样例输出'), pre(problem.sample_output)))),
     element('h2', {}, '测试数据'), problem.groups.map((group, index) => element('section', { class: 'data-group' },
       element('h3', {}, `数据组 ${index + 1} · ${group.score} 分`), element('div', { class: 'pair' },
         element('section', {}, element('h3', {}, '输入'), pre(group.input)),
@@ -408,7 +559,9 @@ async function view(section, id, extra, current) {
       const [sheet, problems] = await Promise.all([id === 'new' ? null : api('/sheets/' + id), api('/problems')]);
       return sheetEditor(sheet, problems);
     }
-    return extra ? studentProblem(await api(`/sheets/${id}/problems/${extra}`), id, current) : studentSheet(await api('/sheets/' + id));
+    if (!extra) return studentSheet(await api('/sheets/' + id));
+    const [problem, sheet] = await Promise.all([api(`/sheets/${id}/problems/${extra}`), api(`/sheets/${id}`)]);
+    return studentProblem(problem, sheet, current);
   }
   if (teacher && section === 'students') return roster(await api('/students'));
   if (teacher && section === 'problems') {
@@ -424,7 +577,6 @@ async function render() {
   const current = ++revision;
   const hash = location.hash.slice(1) || 'sheets';
   const [section, id, extra] = hash.split('/').map(part => encodeURIComponent(part));
-  clearTimeout(timer);
   root.setAttribute('aria-busy', 'true');
   try {
     if (!teacher && !identity) {
@@ -457,5 +609,8 @@ async function render() {
   }
 }
 
-window.addEventListener('hashchange', render);
+window.addEventListener('hashchange', () => {
+  window.scrollTo(0, 0);
+  void render();
+});
 void render();
