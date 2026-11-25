@@ -30,6 +30,7 @@ class OJStore:
     def initialize(self):
         with self.connect(write=True) as connection:
             connection.executescript('''
+                BEGIN IMMEDIATE;
                 CREATE TABLE IF NOT EXISTS oj_settings (
                     key TEXT PRIMARY KEY, value TEXT NOT NULL
                 );
@@ -58,13 +59,17 @@ class OJStore:
                     id INTEGER PRIMARY KEY, student_id INTEGER NOT NULL REFERENCES oj_students(id),
                     sheet_id INTEGER NOT NULL REFERENCES oj_sheets(id), problem_id INTEGER NOT NULL, version INTEGER NOT NULL,
                     kind TEXT NOT NULL CHECK(kind IN ('sample', 'judge')), source TEXT NOT NULL,
-                    created_at REAL NOT NULL, status TEXT NOT NULL DEFAULT 'queued', result_json TEXT,
+                    created_at REAL NOT NULL, status TEXT NOT NULL DEFAULT 'queued', result_json TEXT, custom_input TEXT,
                     FOREIGN KEY(problem_id, version) REFERENCES oj_problem_versions(problem_id, version)
                 );
-                CREATE INDEX IF NOT EXISTS oj_cooldown ON oj_submissions(student_id, problem_id, id DESC);
+                DROP INDEX IF EXISTS oj_cooldown;
+                CREATE INDEX IF NOT EXISTS oj_judge_cooldown ON oj_submissions(student_id, problem_id, id DESC) WHERE kind='judge';
                 CREATE INDEX IF NOT EXISTS oj_student_history ON oj_submissions(student_id, id DESC);
                 CREATE INDEX IF NOT EXISTS oj_queue ON oj_submissions(status, id);
             ''')
+            columns = {column['name'] for column in connection.execute('PRAGMA table_info(oj_submissions)')}
+            if 'custom_input' not in columns:
+                connection.execute('ALTER TABLE oj_submissions ADD COLUMN custom_input TEXT')
             connection.execute('INSERT OR IGNORE INTO oj_settings VALUES (?, ?)',
                                ('default_password', secrets.token_hex(4)))
 
@@ -242,7 +247,7 @@ class OJStore:
             sheet = self.require_sheet_problem(connection, sheet_id, problem_id)
             return {**self.require_problem(connection, problem_id), 'open': bool(sheet['is_open'])}
 
-    def submit(self, student_id, sheet_id, problem_id, kind, source, expected_version):
+    def submit(self, student_id, sheet_id, problem_id, kind, source, expected_version, custom_input=None):
         with self.connect(write=True) as connection:
             if not self.require_sheet_problem(connection, sheet_id, problem_id)['is_open']:
                 raise OJError(409, '历史题单只能查看')
@@ -250,16 +255,18 @@ class OJStore:
             if expected_version is not None and expected_version != version:
                 raise OJError(409, '题目已更新。请刷新题面后重新提交', 'problem_version_changed')
             now = time.time()
-            last = connection.execute('''SELECT created_at FROM oj_submissions WHERE student_id=? AND problem_id=?
-                                        ORDER BY id DESC LIMIT 1''', (student_id, problem_id)).fetchone()
-            if last and last['created_at'] + 30 > now:
-                remaining = max(1, int(last['created_at'] + 30 - now + .999))
-                raise OJError(429, f'请在 {remaining} 秒后重试')
+            if kind == 'judge':
+                last = connection.execute('''SELECT created_at FROM oj_submissions
+                                            WHERE student_id=? AND problem_id=? AND kind='judge'
+                                            ORDER BY id DESC LIMIT 1''', (student_id, problem_id)).fetchone()
+                if last and last['created_at'] + 30 > now:
+                    remaining = max(1, int(last['created_at'] + 30 - now + .999))
+                    raise OJError(429, f'请在 {remaining} 秒后重试')
             if connection.execute("SELECT count(*) FROM oj_submissions WHERE status IN ('queued', 'running')").fetchone()[0] >= 40:
                 raise OJError(503, '评测队列已满，请稍后重试')
             cursor = connection.execute('''INSERT INTO oj_submissions
-                (student_id, sheet_id, problem_id, version, kind, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                (student_id, sheet_id, problem_id, version, kind, source, now))
+                (student_id, sheet_id, problem_id, version, kind, source, created_at, custom_input)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', (student_id, sheet_id, problem_id, version, kind, source, now, custom_input))
             return dict(id=cursor.lastrowid, version=version, status='queued')
 
     @staticmethod
@@ -301,7 +308,7 @@ class OJStore:
                 return None
             connection.execute("UPDATE oj_submissions SET status='running' WHERE id=?", (row['id'],))
             problem = self.require_problem(connection, row['problem_id'], row['version'], teacher=True)
-            return {**problem, 'id': row['id'], 'kind': row['kind'], 'source': row['source']}
+            return {**problem, 'id': row['id'], 'kind': row['kind'], 'source': row['source'], 'custom_input': row['custom_input']}
 
     def complete(self, submission_id, result):
         with self.connect(write=True) as connection:

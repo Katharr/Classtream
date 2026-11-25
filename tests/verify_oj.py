@@ -15,8 +15,10 @@ sys.path.insert(0, str(ROOT / 'windows-lan'))
 def verify(data):
     os.environ['CLASSTREAM_DATA'] = str(data)
     from app import database
+    from app.paths import DB_PATH
     from compat import create_application
     from fastapi.testclient import TestClient
+    from oj_store import OJStore
 
     database.init_db()
     database.create_admin('teacher', 'test-secret', 'Teacher')
@@ -100,9 +102,14 @@ def verify(data):
         submission_id = accepted.json()['id']
         submission = f'/api/oj/submissions/{submission_id}'
         assert wait(student, submission, 'running')['version'] == 2
-        assert submit(student, route, 'sample').status_code == 429
+        assert submit(student, route, 'sample').status_code == 202
+        assert submit(student, route, 'sample').status_code == 202
+        assert submit(student, route).status_code == 429
         other_route = f'/api/oj/sheets/{first}/problems/{other_id}'
         assert submit(student, other_route, 'sample').status_code == 202
+        invalid = student.post(other_route + '/submissions', json=dict(kind='judge', source='int main() {}', custom_input='7'))
+        assert invalid.status_code == 422
+        assert submit(student, other_route).status_code == 202
         assert teacher.put(f'/api/oj/teacher/problems/{problem_id}', json={**problem, 'title': '新版本'}).status_code == 200
         stale = student.post(route + '/submissions', json=dict(kind='sample', source='int main() {}', version=2))
         assert stale.status_code == 409 and stale.json()['code'] == 'problem_version_changed'
@@ -128,7 +135,7 @@ def verify(data):
             assert record['version'] == 3 and record['verdict'] == 'accepted'
         assert 'source' not in student.get('/api/oj/submissions').json()[0]
         assert teacher.get(f'/api/oj/teacher/submissions/{submission_id}').json()['source'] == 'int main() {}'
-        assert len(teacher.get('/api/oj/teacher/submissions').json()) == 21
+        assert len(teacher.get('/api/oj/teacher/submissions').json()) == 24
         assert teacher.post('/api/oj/teacher/students', json={'username': '小林'}).status_code == 201
         assert others[0].post('/api/oj/login', json={'username': '小林', 'password': password}).status_code == 200
         gate.clear()
@@ -139,6 +146,8 @@ def verify(data):
         interrupted = f"/api/oj/submissions/{response.json()['id']}"
         assert wait(student, interrupted, 'running')['title'] == '重启恢复'
 
+    with OJStore(DB_PATH).connect(write=True) as connection:
+        connection.execute('ALTER TABLE oj_submissions DROP COLUMN custom_input')
     gate.set()
     with TestClient(app, client=('127.0.0.1', 12345)):
         assert wait(student, interrupted, 'finished')['score'] == 10

@@ -27,6 +27,8 @@ class BrowserJudge:
         if stop.wait(.15):
             return None
         if task['kind'] == 'sample':
+            if task['custom_input'] is not None:
+                return dict(verdict='executed', score=0, output=task['custom_input'])
             return dict(verdict='accepted', score=0, output='3\n')
         return dict(verdict='accepted', score=task['max_score'])
 

@@ -58,8 +58,8 @@ def verify(data, scratch):
         create('/students', {'username': 'Ada'})
         client = TestClient(app, client=('192.0.2.20', 12000))
         assert client.post('/api/oj/login', json=dict(username='Ada', password=password)).status_code == 200
-        for problem, (kind, verdict, points, source, _) in zip(problems, tests):
-            reply = client.post(f'/api/oj/sheets/{sheet_id}/problems/{problem}/submissions', json=dict(kind=kind, source=source))
+        def run(problem, **payload):
+            reply = client.post(f'/api/oj/sheets/{sheet_id}/problems/{problem}/submissions', json=payload)
             assert reply.status_code == 202, reply.text
             route = f"/api/oj/submissions/{reply.json()['id']}"
             deadline = time.monotonic() + 28
@@ -68,9 +68,17 @@ def verify(data, scratch):
                 if result['status'] == 'finished':
                     break
                 time.sleep(.05)
-            assert result['verdict'] == verdict and result['score'] == points, result
             assert not list(scratch.iterdir()), list(scratch.iterdir())
-        assert len(client.get('/api/oj/submissions').json()) == len(tests)
+            return result
+
+        for problem, (kind, verdict, points, source, _) in zip(problems, tests):
+            result = run(problem, kind=kind, source=source)
+            assert result['verdict'] == verdict and result['score'] == points, result
+        source = '#include <iostream>\nint main(){int a,b;if(std::cin>>a>>b)std::cout<<a+b;else std::cout<<"empty";}'
+        for custom_input, expected in [('7 9\n', '16'), ('', 'empty')]:
+            result = run(problems[2], kind='sample', source=source, custom_input=custom_input)
+            assert result['verdict'] == 'executed' and result['score'] == 0 and result['output'] == expected, result
+        assert len(client.get('/api/oj/submissions').json()) == len(tests) + 2
 
 
 if __name__ == '__main__':

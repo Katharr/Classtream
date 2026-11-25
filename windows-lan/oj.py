@@ -59,6 +59,7 @@ class SheetForm(Payload):
 class SubmissionForm(Payload):
     source: Annotated[str, StringConstraints(min_length=1, max_length=65536)]
     kind: Literal['sample', 'judge'] = 'judge'
+    custom_input: CaseText | None = None
     version: PositiveID | None = None
 
 
@@ -147,10 +148,12 @@ def install_oj(application, store, queue, local_teacher, is_local):
 
     @student.post('/sheets/{sheet_id}/problems/{problem_id}/submissions')
     def submit(sheet_id: RouteID, problem_id: RouteID, identity=Depends(session),
-               form=Depends(body(SubmissionForm, 524_288))):
+               form=Depends(body(SubmissionForm, 1_048_576))):
         if not form.source.strip() or '\x00' in form.source:
             raise OJError(422, '请输入 C++17 源码')
-        result = store.submit(identity['id'], sheet_id, problem_id, form.kind, form.source, form.version)
+        if form.kind == 'judge' and form.custom_input is not None:
+            raise OJError(422, '自定义输入仅用于在线调试')
+        result = store.submit(identity['id'], sheet_id, problem_id, form.kind, form.source, form.version, form.custom_input)
         queue.wake.set()
         return JSONResponse(result, status_code=202, headers=NO_CACHE)
 

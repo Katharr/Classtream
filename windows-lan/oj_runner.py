@@ -1,4 +1,4 @@
-"""Compile C++17 and evaluate the published sample or immutable test groups."""
+"""Compile C++17 and run a sample, custom input, or immutable test groups."""
 import os
 from pathlib import Path
 import shlex
@@ -110,6 +110,14 @@ class WindowsJudge:
     @staticmethod
     def run_cases(task, stop, sandbox, sid, directory):
         sample_only = task['kind'] == 'sample'
+        custom_input = task.get('custom_input') if sample_only else None
+        if custom_input is not None:
+            status, output = sandbox.run([directory / 'solution.exe'], directory, sid, custom_input.encode('utf-8'),
+                                         task['time_ms'] / 1000, task['memory_mb'], stop)
+            if stop.is_set():
+                return None
+            return dict(verdict='executed' if status == 'ok' else status,
+                        score=0, output=output.decode('utf-8', 'replace')[:8000])
         groups = ([dict(input=task['sample_input'], output=task['sample_output'], score=0)]
                   if sample_only else task['groups'])
         cases = []
