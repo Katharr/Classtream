@@ -93,6 +93,8 @@ const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
     let settingsWrites=0;
     student.on('request',r=>{if(r.url().endsWith('/api/settings') && r.method()==='POST')settingsWrites++;});
     await student.goto(base+'/');
+    await student.getByRole('heading', {name: '学生首页'}).waitFor();
+    await student.getByRole('link', {name: '课堂直播', exact: true}).click();
     await student.waitForFunction(()=>document.getElementById('identity-btn').textContent.startsWith('小'));
     const nickname=await student.locator('#identity-btn').innerText();
     assert.equal(await student.locator('#name-modal,#name-input').count(),0);

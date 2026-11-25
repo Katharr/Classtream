@@ -18,6 +18,7 @@ import lan
 cfg = dict(mode='http', teacher_ip='127.0.0.1', http_port=80, https_port=8443,
            backend_port=8000, mdns_enabled=True, mdns_hostname='live')
 assert student_addresses(cfg)['student_url'] == 'http://127.0.0.1'
+assert student_addresses(dict(cfg, mode='https'))['student_url'] == 'https://127.0.0.1:8443'
 for bad in ('Live', 'live.local', '-live', 'live-', '', 'a' * 64):
     try:
         validate_mdns(dict(cfg, mdns_hostname=bad))
@@ -42,6 +43,7 @@ with tempfile.TemporaryDirectory(prefix='Classtream mDNS ') as folder:
     with patch.object(lan, 'HOME', home), patch.object(lan, 'RUNTIME', home / 'runtime'):
         loaded = lan.configuration()
         assert loaded['public_url'] == 'http://192.0.2.77'
+        assert loaded['teacher_url'] == 'http://127.0.0.1:8000/teacher'
         from compat import create_application
         from fastapi.testclient import TestClient
         from app import database
@@ -51,15 +53,16 @@ with tempfile.TemporaryDirectory(prefix='Classtream mDNS ') as folder:
         with_client = TestClient(application, base_url='http://live.local', client=('127.0.0.1', 54321))
         # Deliberately omit lifespan: no screen capture.
         client = with_client
-        assert 'window.__CLASSTREAM_JOIN_TOKEN__=null;' in client.get('/').text
+        assert 'window.__CLASSTREAM_JOIN_TOKEN__=null;' in client.get('/class').text
         auth = client.post('/api/admin/login', json=dict(username='test-teacher', password='test-password')).json()['token']
         token = client.post('/api/session/new', json={'name': 'test'}, headers={'x-admin-token': auth}).json()['token']
-        assert json.dumps(token) in client.get('/').text
+        assert 'window.__CLASSTREAM_JOIN_TOKEN__' not in client.get('/').text
         assert json.dumps(token) in client.get('/class').text
         assert 'window.__CLASSTREAM_JOIN_TOKEN__' not in client.get('/?host=admin').text
         assert client.get('/lan-info').json()['student_url'] == 'http://192.0.2.77'
         publisher.status = 'published'
         lan.publish_ready(loaded, publisher)
+        assert json.loads((home / 'runtime' / 'ready.json').read_text('utf-8'))['teacher_url'] == loaded['teacher_url']
         info = client.get('/lan-info').json()
         assert info['student_url'] == 'http://live.local'
         assert info['fallback_url'] == 'http://192.0.2.77'

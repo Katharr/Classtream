@@ -23,7 +23,12 @@ client = TestClient(application, base_url="https://192.0.2.10:8443")
 # Intentionally do not enter the client's lifespan: no screen capture or real DB.
 assert 'window.__CLASSTREAM_JOIN_TOKEN__=null;' in client.get('/class').text
 assert client.get('/class').headers['cache-control'] == 'no-store'
-assert client.get('/').status_code == 200
+student_home = client.get('/')
+assert student_home.status_code == 200 and student_home.headers['cache-control'] == 'no-store'
+assert '<h1>学生首页</h1>' in student_home.text
+assert 'href="/class"' in student_home.text and 'href="/oj"' in student_home.text
+assert 'href="/oj/teacher"' not in student_home.text
+assert client.get('/teacher').status_code == 403
 assert client.get('/?host=admin').status_code == 200
 assert client.get('/static/css/style.css').status_code == 200
 assert client.get('/static/js/auth.js').status_code == 200
@@ -40,6 +45,7 @@ token2 = client.post('/api/session/new', json={'name':'test two'}, headers=heade
 assert token2 != token1
 assert json.dumps(token2) in client.get('/class/').text
 assert json.dumps(token1) not in client.get('/class').text
+assert 'id="screen-img"' in client.get('/?join=' + token2).text
 assert not database.is_valid_token(token1)
 
 for filename in ('config', 'stream', 'voice', 'main', 'sidebar', 'chat', 'browser-compat', 'stream-client', 'controls'):
@@ -54,7 +60,7 @@ for filename in ('stream', 'voice'):
     assert "'wss:' : 'ws:'" in source
     assert '`ws://${location.host}' not in source
 for filename in ('main', 'sidebar'):
-    assert '"https://192.0.2.10:8443/class"' in client.get(f'/static/js/{filename}.js').text
+    assert '"https://192.0.2.10:8443"' in client.get(f'/static/js/{filename}.js').text
 
 with client.websocket_connect('/ws/1?join=' + token1) as ws:
     assert ws.receive_json()['reason'] == 'invalid_session'
@@ -71,9 +77,15 @@ with client.websocket_connect('/ws/1?stream=2&admin_token=' + auth) as host:
         with client.websocket_connect('/voice/ws?join=' + token2 + '&session_id=student-test') as voice:
             assert voice.receive_json()['type'] == 'voice:init'
 print('PASS: no-class page; short URL; rotation; authentication; original assets; screen and voice WebSockets.')
-http_app = create_application('http://192.0.2.10:8080', teacher_url='http://127.0.0.1:8000/?host=admin')
+http_app = create_application('http://192.0.2.10:8080', teacher_url='http://127.0.0.1:8000/teacher')
 local = TestClient(http_app, client=('127.0.0.1', 50000))
 remote = TestClient(http_app, client=('192.0.2.11', 50001), base_url='http://192.0.2.10:8080')
+teacher_home = local.get('/teacher')
+assert teacher_home.status_code == 200 and teacher_home.headers['cache-control'] == 'no-store'
+assert '<h1>教师首页</h1>' in teacher_home.text
+assert 'href="/?host=admin"' in teacher_home.text and 'href="/oj/teacher"' in teacher_home.text
+assert '<h1>学生首页</h1>' in remote.get('/').text
+assert remote.get('/teacher').status_code == 403
 assert remote.get('/class').status_code == 200
 assert 'window.__CLASSTREAM_VOICE_ENABLED__=false' in remote.get('/class').text
 assert 'window.__CLASSTREAM_VOICE_ENABLED__=false' in local.get('/?host=admin').text

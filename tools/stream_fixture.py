@@ -21,7 +21,17 @@ from stream_transport import FrameStore
 PORT = int(os.environ.get('CLASSTREAM_TEST_PORT', '18765'))
 if not 1024 <= PORT <= 65535:
     raise ValueError('Invalid synthetic classroom port')
-app = create_application(f'http://127.0.0.1:{PORT}', fps=30)
+
+class BrowserJudge:
+    def evaluate(self, task, stop):
+        if stop.wait(.15):
+            return None
+        if task['kind'] == 'sample':
+            return dict(verdict='accepted', score=0, output='3\n')
+        return dict(verdict='accepted', score=task['max_score'])
+
+
+app = create_application(f'http://127.0.0.1:{PORT}', fps=30, oj_runner=BrowserJudge())
 # Keep synthetic browser checks separate from the running teacher's global keys.
 app.state.teacher_shortcuts.bindings = {'hide': 'Ctrl+Alt+Shift+Y', 'restore': 'Ctrl+Alt+Shift+Z'}
 database.init_db()
@@ -68,10 +78,13 @@ async def heartbeat():
 
 @asynccontextmanager
 async def lifespan(_):
+    app.state.oj_queue.store.initialize()
+    app.state.oj_queue.start()
     tasks = [asyncio.create_task(produce()), asyncio.create_task(heartbeat())]
     try:
         yield
     finally:
+        await app.state.oj_queue.shutdown()
         await app.state.teacher_shortcuts.shutdown()
         for task in tasks:
             task.cancel()

@@ -13,11 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 PYTHON_CHECKS = (
     'verify_startup_recovery.py', 'verify_deployment_layout.py',
     'verify_windows_adapter.py', 'verify_mdns.py', 'verify_fast_capture.py',
-    'verify_stream_transport.py', 'verify_student_nicknames.py', 'verify_discussion.py',
+    'verify_stream_transport.py', 'verify_student_nicknames.py', 'verify_discussion.py', 'verify_oj.py',
 )
 BROWSER_CHECKS = (
     'verify_classroom_ui.cjs', 'verify_stream_browser.cjs', 'verify_discussion_browser.cjs',
-    'verify_screen_pan.cjs', 'verify_teacher_shortcuts.cjs', 'verify_stream_recovery.cjs',
+    'verify_screen_pan.cjs', 'verify_teacher_shortcuts.cjs', 'verify_stream_recovery.cjs', 'verify_oj_browser.cjs',
 )
 
 
@@ -38,8 +38,16 @@ def main(suite='core'):
     if suite in ('core', 'all'):
         for check in PYTHON_CHECKS:
             run([sys.executable, '-B', ROOT / 'tests' / check])
+    if suite in ('oj-native', 'all'):
+        compiler = Path(env.get('CLASSTREAM_OJ_GXX') or ROOT.parent / 'teacher/bin/oj-toolchain/bin/g++.exe')
+        if os.name == 'nt' and compiler.is_file():
+            run([sys.executable, '-B', ROOT / 'tests/verify_oj_native.py'])
+        elif suite == 'oj-native':
+            raise RuntimeError('Prepare the OJ toolchain or point CLASSTREAM_OJ_GXX to it.')
+        else:
+            print('SKIP native OJ: prepared Windows GCC toolchain unavailable', flush=True)
     node = shutil.which('node')
-    if not node and suite != 'stress':
+    if not node and suite not in ('stress', 'oj-native'):
         raise RuntimeError('Node.js is required for browser-script checks')
     if suite in ('core', 'all'):
         run([node, ROOT / 'tests/verify_stream_health.cjs'])
@@ -82,6 +90,6 @@ def main(suite='core'):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--suite', choices=('core', 'browser', 'stress', 'all'), default='core')
+    parser.add_argument('--suite', choices=('core', 'browser', 'stress', 'oj-native', 'all'), default='core')
     options = parser.parse_args()
     main(suite=options.suite)

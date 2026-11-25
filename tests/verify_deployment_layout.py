@@ -46,6 +46,7 @@ client = TestClient(create_application('http://192.0.2.99:8080'))
 assert client.get('/lan-info').json()['student_url'] == 'http://192.0.2.77'
 from pathlib import Path
 assert client.get('/classroom-ui/classroom.js').content == Path('classroom.js').read_bytes()
+assert client.get('/classroom-ui/home.css').content == Path('home.css').read_bytes()
 '''], cwd=CODE, env=env, check=True)
     assert json.loads(config.read_text('utf-8')) == cfg
 
@@ -56,4 +57,5 @@ with zipfile.ZipFile(ROOT / 'dist/Classtream-LAN-Share.zip') as archive:
     names = archive.namelist()
     assert not any('/runtime/' in name or '/.venv/' in name or 'run_local' in name for name in names)
     assert b'CLASSTREAM_HOME' in archive.read('Classtream-LAN/lan.py')
+    assert {'Classtream-LAN/home.html', 'Classtream-LAN/home.css'} <= set(names)
 print('PASS: separate home, source assets, portable fallback and clean release archive')
