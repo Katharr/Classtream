@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f4eb">
+  <title>{title} · Classtream</title>
+  <link rel="stylesheet" href="/classroom-ui/home.css">
+</head>
+<body>
+  <main class="home">
+    <header class="home-heading">
+      <p class="wordmark">Classtream</p>
+      <h1>{title}</h1>
+    </header>
+    <nav class="entry-grid" aria-label="课堂入口">
+      <a class="entry entry-live" href="{live_url}" aria-labelledby="live-title" aria-describedby="live-description">
+        <span class="entry-icon monitor" aria-hidden="true"><span></span></span>
+        <span class="entry-arrow" aria-hidden="true">↗</span>
+        <h2 id="live-title">课堂直播</h2>
+        <p id="live-description">{live_description}</p>
+      </a>
+      <a class="entry entry-oj" href="{oj_url}" aria-labelledby="oj-title" aria-describedby="oj-description">
+        <span class="entry-icon brackets" aria-hidden="true">&lt;/&gt;</span>
+        <span class="entry-arrow" aria-hidden="true">↗</span>
+        <h2 id="oj-title">编程 OJ</h2>
+        <p id="oj-description">{oj_description}</p>
+      </a>
+    </nav>
+  </main>
+</body>
+</html>

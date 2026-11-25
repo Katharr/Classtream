@@ -50,7 +50,7 @@ def configuration():
         raise ValueError('Public and local teacher ports must differ.')
     cfg['public_url'] = (http_origin(str(ip), cfg['public_port']) if cfg['mode'] == 'http'
                          else f"https://{ip}:{cfg['public_port']}")
-    cfg['teacher_url'] = f"http://127.0.0.1:{cfg['backend_port']}/?host=admin"
+    cfg['teacher_url'] = f"http://127.0.0.1:{cfg['backend_port']}/teacher"
     return cfg
 
 
@@ -107,7 +107,7 @@ def root_certificate():
 
 def export_student_setup(cfg):
     if cfg['mode'] != 'https':
-        raise RuntimeError('HTTP mode needs no student setup. Share ' + cfg['public_url'] + '/class')
+        raise RuntimeError('HTTP mode needs no student setup. Share ' + cfg['public_url'])
     cert = root_certificate()
     if not cert.is_file():
         raise RuntimeError("CA certificate is not ready. Start the server first.")
@@ -117,7 +117,7 @@ def export_student_setup(cfg):
               'certutil -user -addstore Root "%~dp0classroom-root.crt"\r\n'
               'if errorlevel 1 (pause & exit /b 1)\r\n'
               'echo Certificate installed for the current Windows user.\r\n'
-              'echo Restart your browser and open: ' + cfg["public_url"] + '/class\r\npause\r\n')
+              'echo Restart your browser and open: ' + cfg["public_url"] + '\r\npause\r\n')
     (PUBLIC / "install-certificate.cmd").write_bytes(script.encode("ascii"))
     der = ssl.PEM_cert_to_DER_cert(cert.read_text("ascii"))
     fingerprint = hashlib.sha256(der).hexdigest().upper()
@@ -127,7 +127,7 @@ def export_student_setup(cfg):
         "双击 install-certificate.cmd，为当前 Windows 用户导入根证书；"
         "接受系统提示后，完全关闭并重新打开浏览器。\n"
         "Firefox 若仍提示证书错误，请在其证书设置中手动导入 classroom-root.crt。\n\n"
-        f"学生入口：{cfg['public_url']}/class\n"
+        f"学生入口：{cfg['public_url']}\n"
         f"证书 SHA-256：{fingerprint}\n\n"
         "同一学生机若换 Windows 登录用户，需要为新用户重新导入。\n"
         "卸载：运行 certmgr.msc，找到“受信任的根证书颁发机构”中"
@@ -243,6 +243,9 @@ def publish_ready(cfg, publisher):
     temporary.replace(ready)
     print('Student: ' + data['student_url'], flush=True)
     print('Backup: ' + data['fallback_url'], flush=True)
+    print('Student OJ: ' + data['student_url'] + '/oj', flush=True)
+    if data['fallback_url'] != data['student_url']:
+        print('OJ backup: ' + data['fallback_url'] + '/oj', flush=True)
 
 
 def serve(cfg):
@@ -305,6 +308,7 @@ def start(cfg, open_browser=False, on_ready=None):
             publisher.sync(cfg)
             publish_ready(cfg, publisher)
             print(f"\nREADY\nTeacher: {cfg['teacher_url']}")
+            print('Teacher OJ: ' + cfg['teacher_url'].removesuffix('/teacher') + '/oj/teacher')
             print('HTTP: no student installation; microphone disabled.' if cfg['mode'] == 'http'
                   else f"Student certificate package: {RUNTIME / 'student-setup.zip'}")
             print('Keep this window open. Close it or press Ctrl+C to stop. Run start.cmd to restart.', flush=True)

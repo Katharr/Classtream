@@ -1,0 +1,142 @@
+:root {
+  color-scheme: light;
+  font-family: "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  background: #f5f4eb;
+  color: #182d29;
+}
+
+body {
+  margin: 0;
+}
+
+.home {
+  max-width: 58rem;
+  margin-inline: auto;
+  padding: clamp(3.5rem, 13vh, 8rem) clamp(1.25rem, 5vw, 3rem) 4rem;
+}
+
+.home-heading {
+  border-top: 4px solid #24473c;
+  padding-block: 1.3rem clamp(1.5rem, 4vw, 2.5rem);
+}
+
+.wordmark {
+  margin: 0 0 .6rem;
+  color: #35564a;
+  font-family: monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2.25rem, 5vw, 3.75rem);
+  line-height: 1.2;
+}
+
+.entry-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.entry {
+  position: relative;
+  display: block;
+  padding: clamp(1.25rem, 3.2vw, 2rem);
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.entry-live {
+  --accent: #214e6b;
+  --surface: #edf5f8;
+  --border: #b1c9d6;
+}
+
+.entry-oj {
+  --accent: #275340;
+  --surface: #eff5e8;
+  --border: #bbcdb0;
+}
+
+.entry:hover {
+  border-color: var(--accent);
+  box-shadow: 0 3px 0 var(--accent);
+}
+
+.entry:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.entry-icon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid var(--border);
+  border-radius: .65rem;
+  background: #fffdf7;
+  margin-bottom: 1.3rem;
+  box-sizing: border-box;
+}
+
+.monitor span {
+  position: relative;
+  width: 1.2rem;
+  height: .8rem;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+  margin-bottom: .25rem;
+}
+
+.monitor span::after {
+  content: "";
+  position: absolute;
+  width: .65rem;
+  height: 2px;
+  left: 50%;
+  bottom: -.35rem;
+  transform: translateX(-50%);
+  background: currentColor;
+}
+
+.brackets {
+  font: 700 1.05rem monospace;
+}
+
+.entry-arrow {
+  position: absolute;
+  inset: 1.2rem 1.35rem auto auto;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.entry h2 {
+  margin: 0 0 .35rem;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.3;
+}
+
+.entry p {
+  margin: 0;
+  color: #374d48;
+  font-size: .95rem;
+  line-height: 1.65;
+}
+
+@media (max-width: 37rem) {
+  .home {
+    padding-block: 2.5rem;
+  }
+
+  .entry-grid {
+    grid-template-columns: 1fr;
+  }
+}

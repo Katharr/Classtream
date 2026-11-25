@@ -20,7 +20,7 @@ def http_origin(host, port):
 def student_addresses(cfg, publication=None):
     """Only promote a hostname after this launcher successfully published it."""
     if cfg.get('mode', 'http') != 'http':
-        url = f"https://{cfg['teacher_ip']}:{cfg['https_port']}/class"
+        url = f"https://{cfg['teacher_ip']}:{cfg['https_port']}"
         return dict(student_url=url, fallback_url=url, mdns_status='disabled')
     enabled, name = validate_mdns(cfg)
     fallback = http_origin(cfg['teacher_ip'], cfg.get('http_port', 80))

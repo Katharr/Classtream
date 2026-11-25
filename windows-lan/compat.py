@@ -46,7 +46,7 @@ def replace_once(source, old, new, label):
     return source.replace(old, new, 1)
 
 
-def create_application(public_url, fps=30, teacher_url=None):
+def create_application(public_url, fps=30, teacher_url=None, *, oj_runner=None):
     if version("classtream") != "1.0.1":
         raise RuntimeError("This adapter requires classtream==1.0.1; see requirements.txt.")
 
@@ -58,9 +58,19 @@ def create_application(public_url, fps=30, teacher_url=None):
     from fast_capture import capture_loop, CAPTURE_TASKS
     from discussion import DiscussionManager as StreamManager, install_discussion, adapt_discussion_scripts
     from teacher_hotkeys import TeacherShortcuts
+    from app.paths import DB_PATH
+    from oj import install_oj
+    from oj_queue import OJQueue
+    from oj_store import OJStore
+    oj_store = OJStore(DB_PATH)
     # Test and production data roots stay isolated; this file contains no auth tokens.
     deployment_home = Path(os.environ.get('CLASSTREAM_HOME') or Path(__file__).parent)
     data_root = Path(os.environ.get('CLASSTREAM_DATA', str(deployment_home / 'runtime' / 'data')))
+    if oj_runner is None:
+        from oj_runner import WindowsJudge
+        compiler = os.environ.get('CLASSTREAM_OJ_GXX') or deployment_home / 'bin' / 'oj-toolchain' / 'bin' / 'g++.exe'
+        oj_runner = WindowsJudge(compiler, data_root / 'oj-work')
+    oj_queue = OJQueue(oj_store, oj_runner)
     shortcuts = TeacherShortcuts(data_root.parent / 'teacher-shortcuts.json'
                                 if data_root.name == 'data' else data_root / 'teacher-shortcuts.json')
     if not isinstance(state.manager, StreamManager):
@@ -74,12 +84,15 @@ def create_application(public_url, fps=30, teacher_url=None):
     @asynccontextmanager
     async def lifespan(_):
         async with original.router.lifespan_context(original):
-            print(f"\nTeacher: {teacher_url or public_url + '/?host=admin'}")
-            print(f"Student: {public_url}/class\n", flush=True)
+            oj_store.initialize()
+            oj_queue.start()
+            print(f"\nTeacher: {teacher_url or public_url + '/teacher'}")
+            print(f"Student: {public_url}\n", flush=True)
             try:
                 yield
             finally:
                 import asyncio
+                await oj_queue.shutdown()
                 await shortcuts.shutdown()
                 tasks = list(CAPTURE_TASKS)
                 for task in tasks:
@@ -90,21 +103,25 @@ def create_application(public_url, fps=30, teacher_url=None):
     application = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None,
                           openapi_url=None)
     application.state.teacher_shortcuts = shortcuts
+    application.state.oj_queue = oj_queue
     http_mode = public_url.startswith('http:')
     if http_mode:
         application.add_middleware(LocalAdministration)
     no_cache = {"Cache-Control": "no-store"}
 
-    def local_teacher(request):
+    def is_local(request):
         address = request.client.host if request.client else ''
         try:
-            local = ipaddress.ip_address(address).is_loopback
+            return ipaddress.ip_address(address).is_loopback
         except ValueError:
-            local = False
+            return False
+
+    def local_teacher(request):
         token = request.headers.get('x-admin-token', '')
-        return token if local and token in state.admin_tokens else None
+        return token if is_local(request) and token in state.admin_tokens else None
 
     install_discussion(application, local_teacher)
+    install_oj(application, oj_store, oj_queue, local_teacher, is_local)
 
     @application.get('/api/teacher-shortcuts')
     async def shortcut_status(request: Request):
@@ -171,8 +188,7 @@ def create_application(public_url, fps=30, teacher_url=None):
             return JSONResponse({'ok': False}, status_code=401)
     def current_addresses():
         if not http_mode:
-            return dict(student_url=public_url + '/class', fallback_url=public_url + '/class',
-                        mdns_status='disabled')
+            return dict(student_url=public_url, fallback_url=public_url, mdns_status='disabled')
         try:
             cfg = json.loads((deployment_home / 'config.json').read_text('utf-8-sig'))
             cfg['teacher_ip'] = str(ipaddress.IPv4Address(cfg['teacher_ip']))
@@ -357,17 +373,35 @@ function _reconnectGridCell(id, canvas, cell) {
     scripts = {name: localize_script(name, source) for name, source in scripts.items()}
     adapt_discussion_scripts(scripts)
 
+    ui_directory = Path(__file__).parent
+    home = (ui_directory / 'home.html').read_text('utf-8')
+    student_home = home.format(
+        title='学生首页', live_url='/class', live_description='观看老师的屏幕共享，参与课堂讨论。',
+        oj_url='/oj', oj_description='登录学员账号，打开题单并提交代码。',
+    )
+    teacher_home = home.format(
+        title='教师首页', live_url='/?host=admin', live_description='开启课堂并管理屏幕共享和讨论。',
+        oj_url='/oj/teacher', oj_description='管理学员、题库和题单，查看提交记录。',
+    )
+
     @application.get('/classroom-ui/{name}')
     async def classroom_asset(name: str):
         from fastapi.responses import FileResponse
-        if name not in ('classroom.css', 'classroom.js', 'classroom-errors.js', 'teacher-shortcuts.js', 'discussion.js', 'screen-pan.js'):
+        if name not in ('classroom.css', 'classroom.js', 'classroom-errors.js', 'teacher-shortcuts.js',
+                        'discussion.js', 'screen-pan.js', 'home.css'):
             return Response(status_code=404)
-        return FileResponse(Path(__file__).parent / name, headers=no_cache)
+        return FileResponse(ui_directory / name, headers=no_cache)
+
+    @application.get('/teacher', response_class=HTMLResponse)
+    async def teacher_index(request: Request):
+        if not is_local(request):
+            return Response(status_code=403)
+        return HTMLResponse(teacher_home, headers=no_cache)
 
     @application.get('/', response_class=HTMLResponse)
     async def index(request: Request):
-        if not request.query_params:
-            return await classroom()
+        if 'host' not in request.query_params and 'join' not in request.query_params:
+            return HTMLResponse(student_home, headers=no_cache)
         page = template
         if 'host' in request.query_params:
             page = re.sub(r'  <button class="btn" id="btn-pause".*?</button>', '', page, flags=re.S)
