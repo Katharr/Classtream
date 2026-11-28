@@ -30,6 +30,10 @@ class StudentForm(Payload):
     username: Username
 
 
+class DefaultPasswordForm(Payload):
+    password: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
+
+
 class LoginForm(StudentForm):
     password: Annotated[str, StringConstraints(min_length=1, max_length=128)]
 
@@ -168,6 +172,15 @@ def install_oj(application, store, queue, local_teacher, is_local):
     @teacher.get('/students')
     def students():
         return JSONResponse(store.students(), headers=NO_CACHE)
+
+    @teacher.get('/settings')
+    def settings():
+        return JSONResponse(store.settings(), headers=NO_CACHE)
+
+    @teacher.put('/settings/default-password')
+    def update_default_password(form=Depends(body(DefaultPasswordForm, 1024))):
+        store.set_default_password(form.password)
+        return JSONResponse({'default_password': form.password}, headers=NO_CACHE)
 
     @teacher.post('/students')
     def add_student(form=Depends(body(StudentForm, 1024))):

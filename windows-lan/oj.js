@@ -109,7 +109,7 @@ function login() {
 }
 
 function chrome(route, loggedIn) {
-  const tabs = teacher ? [['题单', 'sheets'], ['题库', 'problems'], ['学员', 'students'], ['提交记录', 'submissions']]
+  const tabs = teacher ? [['题单', 'sheets'], ['题库', 'problems'], ['学员', 'students'], ['提交记录', 'submissions'], ['设置', 'settings']]
                        : [['题单', 'sheets'], ['我的提交', 'submissions']];
   nav.replaceChildren(...(loggedIn ? tabs.map(([name, path]) => (
     element('a', { href: '#' + path, 'aria-current': route === path ? 'page' : undefined }, name)
@@ -432,6 +432,18 @@ function roster(data) {
       })), '暂无学员')];
 }
 
+function settings(data) {
+  const notice = errorLine();
+  return [title('设置'), formOf([
+    field('学员默认密码', 'password', data.default_password, { required: true, maxlength: 128, autocomplete: 'new-password' })
+  ], '保存默认密码', async (values, form) => {
+    const result = await api('/settings/default-password', 'PUT', Object.fromEntries(values));
+    feedback(notice, '默认密码已更新。新建学员或重置密码时生效。', true);
+    const input = form.elements.password;
+    if (input) input.value = result.default_password;
+  }), notice];
+}
+
 function teacherProblems(problems) {
   return element('section', { class: 'catalog' }, heading('题库', link('新建题目', '#problems/new', 'button primary')),
     rows(problems, problem => element('a', { class: 'row-link problem-row', href: '#problems/' + problem.id },
@@ -564,6 +576,7 @@ async function view(section, id, extra, current) {
     return studentProblem(problem, sheet, current);
   }
   if (teacher && section === 'students') return roster(await api('/students'));
+  if (teacher && section === 'settings') return settings(await api('/settings'));
   if (teacher && section === 'problems') {
     if (!id) return teacherProblems(await api('/problems'));
     if (id === 'new') return problemEditor();

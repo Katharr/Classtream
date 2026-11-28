@@ -3,6 +3,7 @@ from contextlib import closing, contextmanager
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import sqlite3
 import time
@@ -71,11 +72,21 @@ class OJStore:
             if 'custom_input' not in columns:
                 connection.execute('ALTER TABLE oj_submissions ADD COLUMN custom_input TEXT')
             connection.execute('INSERT OR IGNORE INTO oj_settings VALUES (?, ?)',
-                               ('default_password', secrets.token_hex(4)))
+                               ('default_password', 'xdf123'))
+            migrated = connection.execute("INSERT OR IGNORE INTO oj_settings VALUES (?, ?)",
+                                          ('default_password_migrated', '1'))
+            if migrated.rowcount:
+                current = self.default_password(connection)
+                if re.fullmatch(r'[0-9a-f]{8}', current):
+                    connection.execute("UPDATE oj_settings SET value='xdf123' WHERE key='default_password'")
 
     @staticmethod
     def default_password(connection):
         return connection.execute("SELECT value FROM oj_settings WHERE key='default_password'").fetchone()[0]
+
+    def set_default_password(self, password):
+        with self.connect(write=True) as connection:
+            connection.execute("UPDATE oj_settings SET value=? WHERE key='default_password'", (password,))
 
     @staticmethod
     def password_hash(password, salt):
@@ -85,6 +96,10 @@ class OJStore:
         with self.connect() as connection:
             students = [dict(row) for row in connection.execute('SELECT id, username FROM oj_students ORDER BY id')]
             return dict(students=students, default_password=self.default_password(connection))
+
+    def settings(self):
+        with self.connect() as connection:
+            return dict(default_password=self.default_password(connection))
 
     def add_student(self, username):
         with self.connect(write=True) as connection:
