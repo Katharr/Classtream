@@ -1,4 +1,5 @@
 """OJ acceptance at the real HTTP application boundary, with isolated data."""
+import json
 import os
 from pathlib import Path
 import sys
@@ -14,6 +15,7 @@ sys.path.insert(0, str(ROOT / 'windows-lan'))
 
 def verify(data):
     os.environ['CLASSTREAM_DATA'] = str(data)
+    os.environ['CLASSTREAM_HOME'] = str(data)
     from app import database
     from app.paths import DB_PATH
     from compat import create_application
@@ -152,6 +154,43 @@ def verify(data):
     with TestClient(app, client=('127.0.0.1', 12345)):
         assert wait(student, interrupted, 'finished')['score'] == 10
         assert student.get(submission).json()['version'] == 2
+
+    prep = data / 'prep'
+    library = prep / 'OJ题目'
+    library.mkdir(parents=True)
+    config = data / 'config.json'
+    config.write_text(json.dumps({'prep_dir': str(prep)}), 'utf-8')
+    path = library / 'prepared.json'
+    prepared = dict(schema_version=1, source_id='fixture/m1', title='自编题', statement='两数求和',
+                    input_format='两个整数', output_format='一个整数', constraints='整数非负',
+                    tags=['二分', '右边界'], time_ms=1000, memory_mb=256,
+                    sample_cases=[dict(input='1 2\n', output='3\n')],
+                    judge_cases=[dict(input='12 24\n', output='36\n', score=100)])
+    path.write_text(json.dumps(prepared), 'utf-8')
+    with TestClient(app, client=('127.0.0.1', 12345)) as teacher:
+        prefix = '/api/oj/teacher'
+        sync = prefix + '/problems/sync'
+        assert teacher.post(sync).status_code == 403
+        teacher.headers['X-Admin-Token'] = teacher.post('/api/admin/login', json={
+            'username': 'teacher', 'password': 'test-secret'}).json()['token']
+        assert teacher.post(sync).json()['added'] == 1
+        imported, = [row for row in teacher.get(prefix + '/problems').json() if row.get('source_id') == 'fixture/m1']
+        pid = imported['id']
+        assert imported['version'] == 1 and imported['available'] and imported['max_score'] == 100
+        assert teacher.post(sync).json()['unchanged'] == 1
+        sheet_body = dict(title='备课题试点', open=True, problem_ids=[pid])
+        old_sheet = teacher.post(prefix + '/sheets', json=sheet_body).json()['id']
+        path.write_text(json.dumps({**prepared, 'title': '自编题新版'}), 'utf-8')
+        assert teacher.post(sync).json()['updated'] == 1
+        new_sheet = teacher.post(prefix + '/sheets', json=sheet_body).json()['id']
+        for sid, version in ((old_sheet, 1), (new_sheet, 2)):
+            visible = student.get(f'/api/oj/sheets/{sid}/problems/{pid}').json()
+            assert visible['version'] == version and visible['sample_cases'] == prepared['sample_cases']
+            assert visible['tags'] == prepared['tags'] and 'groups' not in visible and 'judge_cases' not in visible
+        path.write_text('invalid', 'utf-8')
+        assert len(teacher.post(sync).json()['issues']) == 1
+        assert teacher.post(prefix + '/sheets', json=sheet_body).status_code == 422
+        assert student.get(f'/api/oj/sheets/{old_sheet}/problems/{pid}').json()['version'] == 1
 
 
 if __name__ == '__main__':

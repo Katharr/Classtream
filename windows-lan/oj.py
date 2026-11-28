@@ -86,7 +86,7 @@ def body(model, limit):
     return parse
 
 
-def install_oj(application, store, queue, local_teacher, is_local):
+def install_oj(application, store, queue, local_teacher, is_local, prepared_library):
     student = APIRouter(prefix='/api/oj')
 
     def require_teacher(request: Request):
@@ -112,7 +112,7 @@ def install_oj(application, store, queue, local_teacher, is_local):
 
     @application.get('/oj/assets/{name}')
     def asset(name: str):
-        if name not in ('oj.css', 'oj.js'):
+        if name not in ('oj.css', 'oj.js', 'katex.min.js', 'katex-auto-render.min.js'):
             raise OJError(404, '资源不存在')
         return FileResponse(ASSETS / name, headers=NO_CACHE)
 
@@ -194,6 +194,10 @@ def install_oj(application, store, queue, local_teacher, is_local):
     @teacher.get('/problems')
     def problems():
         return JSONResponse(store.problems(), headers=NO_CACHE)
+
+    @teacher.post('/problems/sync')
+    def sync_problems():
+        return JSONResponse(prepared_library.sync(), headers=NO_CACHE)
 
     @teacher.get('/problems/{problem_id}')
     def problem(problem_id: RouteID, version: QueryID = None):

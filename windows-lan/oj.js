@@ -213,14 +213,40 @@ function sheetContext(sheet, problem) {
       element('h3', {}, '题目列表'), element('ol', { class: 'sheet-problems' }, problemLinks)));
 }
 
+function statementParagraph(text) {
+  const paragraph = element('p', { class: 'statement' }, text);
+  window.renderMathInElement?.(paragraph, {
+    delimiters: [
+      { left: '$$', right: '$$', display: true },
+      { left: '$', right: '$', display: false },
+    ],
+    output: 'mathml',
+    trust: false,
+    maxSize: 20,
+    preProcess: math => math.replaceAll('<=', '≤').replaceAll('>=', '≥'),
+    // The renderer leaves malformed formulas as their original text.
+    errorCallback: () => {},
+  });
+  return paragraph;
+}
+
 function problemPaper(problem, className) {
-  const sample = element('div', { class: 'samples problem-samples' },
-    element('section', {}, element('h3', {}, '样例输入'), pre(problem.sample_input)),
-    element('section', {}, element('h3', {}, '样例输出'), pre(problem.sample_output)));
+  const samples = problem.sample_cases || [{ input: problem.sample_input, output: problem.sample_output }];
+  const sections = [['输入格式', problem.input_format], ['输出格式', problem.output_format],
+    ['数据范围与约定', problem.constraints]].filter(([, text]) => text);
+  const samplePairs = samples.map((sample, index) => {
+    const suffix = samples.length > 1 ? ' ' + (index + 1) : '';
+    return element('div', { class: 'samples problem-samples' },
+      element('section', {}, element('h3', {}, '样例输入' + suffix), pre(sample.input)),
+      element('section', {}, element('h3', {}, '样例输出' + suffix), pre(sample.output)));
+  });
   return element('article', { class: className },
     element('header', { class: 'problem-intro' }, title(problem.title),
-      element('p', { class: 'meta' }, `时限 ${problem.time_ms} ms　内存 ${problem.memory_mb} MB　满分 ${problem.max_score}`)),
-    element('h2', {}, '题目描述'), element('p', { class: 'statement' }, problem.statement), sample);
+      element('p', { class: 'meta' }, `时限 ${problem.time_ms} ms　内存 ${problem.memory_mb} MB　满分 ${problem.max_score}`),
+      problem.tags?.length ? element('p', { class: 'meta' }, problem.tags.join(' · ')) : null),
+    element('h2', {}, '题目描述'), statementParagraph(problem.statement),
+    sections.flatMap(([heading, text]) => [element('h2', {}, heading), statementParagraph(text)]),
+    samplePairs);
 }
 
 function studentProblem(problem, sheet, current) {
@@ -444,10 +470,37 @@ function settings(data) {
   }), notice];
 }
 
-function teacherProblems(problems) {
-  return element('section', { class: 'catalog' }, heading('题库', link('新建题目', '#problems/new', 'button primary')),
+async function loadTeacherProblems() {
+  const report = await api('/problems/sync', 'POST');
+  return teacherProblems(await api('/problems'), report);
+}
+
+function teacherProblems(problems, report) {
+  const notice = errorLine();
+  const syncControl = button('重新同步', async event => {
+    const control = event.currentTarget;
+    control.disabled = true;
+    try {
+      catalog.replaceWith(await loadTeacherProblems());
+    } catch (error) {
+      feedback(notice, error.message);
+    } finally {
+      control.disabled = false;
+    }
+  });
+  if (report.warning) feedback(notice, report.warning);
+  else if (report.configured) {
+    feedback(notice, `备课同步完成。新增 ${report.added} 道，更新 ${report.updated} 道，已有 ${report.unchanged} 道。`, true);
+  } else feedback(notice, '可在教师机配置备课目录后同步自编题。');
+  const catalog = element('section', { class: 'catalog' },
+    heading('题库', element('div', { class: 'actions' }, syncControl, link('新建题目', '#problems/new', 'button primary'))),
+    notice, report.issues.length ? element('ul', {}, report.issues.map(issue =>
+      element('li', {}, `${issue.file} · ${issue.reason}`))) : null,
     rows(problems, problem => element('a', { class: 'row-link problem-row', href: '#problems/' + problem.id },
-      element('strong', {}, problem.title), element('span', { class: 'meta' }, `v${problem.version} · ${problem.max_score} 分`)), '暂无题目'));
+      element('strong', {}, problem.title), element('span', { class: 'meta' },
+        [`v${problem.version}`, `${problem.max_score} 分`, ...(problem.tags || []),
+          problem.available === false ? '暂不可布置' : ''].filter(Boolean).join(' · '))), '暂无题目'));
+  return catalog;
 }
 
 function problemEditor(problem) {
@@ -497,7 +550,7 @@ function problemVersion(problem) {
   return [link('编辑当前版本', '#problems/' + problem.id, 'back'), heading(problem.title, badge('v' + problem.version, 'neutral')),
     element('article', { class: 'paper' },
       element('p', { class: 'meta' }, `时限 ${problem.time_ms} ms　内存 ${problem.memory_mb} MB`),
-      element('p', { class: 'statement' }, problem.statement),
+      statementParagraph(problem.statement),
       element('div', { class: 'samples' }, element('section', {}, element('h3', {}, '样例输入'), pre(problem.sample_input)),
         element('section', {}, element('h3', {}, '样例输出'), pre(problem.sample_output)))),
     element('h2', {}, '测试数据'), problem.groups.map((group, index) => element('section', { class: 'data-group' },
@@ -510,6 +563,11 @@ function sheetEditor(sheet, problems) {
   const selected = (sheet?.problems || []).map(problem => problem.id);
   const ordered = element('ol', { class: 'ordered' });
   const picker = element('select', { 'aria-label': '选择题目' });
+  const tags = [...new Set(problems.filter(problem => problem.available !== false).flatMap(problem => problem.tags || []))];
+  const filters = tags.map(tag => {
+    const control = element('input', { type: 'checkbox', onchange: show });
+    return { tag, control };
+  });
   const add = button('加入题目', () => {
     if (selected.length < 100 && picker.value) selected.push(Number(picker.value));
     show();
@@ -520,7 +578,9 @@ function sheetEditor(sheet, problems) {
     show();
   }
   function show() {
-    const available = problems.filter(problem => !selected.includes(problem.id));
+    const active = filters.filter(({ control }) => control.checked);
+    const available = problems.filter(problem => problem.available !== false && !selected.includes(problem.id)
+      && active.every(({ tag }) => problem.tags?.includes(tag)));
     picker.replaceChildren(element('option', { value: '' }, '选择题目'),
       ...available.map(problem => element('option', { value: problem.id }, problem.title)));
     add.disabled = selected.length >= 100 || !available.length;
@@ -551,7 +611,10 @@ function sheetEditor(sheet, problems) {
   return [link('返回题单', '#sheets', 'back'), heading(sheet ? '编辑题单' : '新建题单', sheet ? sheetBadge(sheet) : null),
     element('div', { class: 'actions' }, openControl, notice),
     formOf([field('标题', 'title', sheet?.title || '', { required: true, maxlength: 120 }),
-      element('h2', {}, '题目顺序'), ordered, element('div', { class: 'actions' }, picker, add),
+      element('h2', {}, '题目顺序'), ordered,
+      filters.length ? element('div', { class: 'actions', 'aria-label': '按标签筛选候选题' },
+        filters.map(({ tag, control }) => element('label', { class: 'check' }, control, tag))) : null,
+      element('div', { class: 'actions' }, picker, add),
       !sheet ? element('label', { class: 'check' }, element('input', { type: 'checkbox', name: 'open' }), '创建时开放') : null
     ], sheet ? '保存题单' : '创建题单', async values => {
       await api(sheet ? '/sheets/' + sheet.id : '/sheets', sheet ? 'PUT' : 'POST',
@@ -578,9 +641,10 @@ async function view(section, id, extra, current) {
   if (teacher && section === 'students') return roster(await api('/students'));
   if (teacher && section === 'settings') return settings(await api('/settings'));
   if (teacher && section === 'problems') {
-    if (!id) return teacherProblems(await api('/problems'));
+    if (!id) return loadTeacherProblems();
     if (id === 'new') return problemEditor();
     const problem = await api('/problems/' + id + (extra ? '?version=' + extra : ''));
+    if (problem.sample_cases) return [link('返回题库', '#problems', 'back'), problemPaper(problem, 'paper')];
     return extra ? problemVersion(problem) : problemEditor(problem);
   }
   return [title('页面不存在'), link('返回题单', '#sheets', 'button')];

@@ -4,6 +4,15 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { chromium } = require(process.env.CLASSTREAM_PLAYWRIGHT || 'playwright');
 const artifacts = path.resolve(__dirname, '../.artifacts/browser');
+const sumStatement = '输入两个整数，输出它们的和。设 $1 <= n,q <= 100000$，且 $x_i < 10^9$。';
+
+async function checkSumMath(paper) {
+  const statement = paper.locator('.statement');
+  assert.match(await statement.innerText(), /输入两个整数，输出它们的和。/);
+  assert.deepEqual(await statement.locator('math mo').allTextContents(), ['≤', ',', '≤', '<']);
+  assert.equal(await statement.locator('math msub').first().textContent(), 'xi');
+  assert.equal(await statement.locator('math msup').first().textContent(), '109');
+}
 
 (async () => {
   fs.mkdirSync(artifacts, { recursive: true });
@@ -33,7 +42,7 @@ const artifacts = path.resolve(__dirname, '../.artifacts/browser');
     await teacher.getByRole('link', { name: '题库', exact: true }).click();
     await teacher.getByRole('link', { name: '新建题目' }).click();
     await teacher.getByLabel('标题').fill('两数求和');
-    await teacher.getByLabel('题面').fill('输入两个整数，输出它们的和。');
+    await teacher.getByLabel('题面').fill(sumStatement);
     await teacher.getByLabel('样例输入').fill('1 2');
     await teacher.getByLabel('样例输出').fill('3');
     await teacher.getByRole('button', { name: '添加数据组' }).click();
@@ -86,6 +95,7 @@ const artifacts = path.resolve(__dirname, '../.artifacts/browser');
     await student.getByRole('link', { name: '第一课 历史' }).click();
     await student.getByRole('link', { name: /两数求和/ }).click();
     await student.getByRole('heading', { name: '样例输入' }).waitFor();
+    await checkSumMath(student.locator('.problem-paper'));
     assert.equal(await sourceEditor.count(), 0);
     assert.equal(await student.getByRole('button', { name: '进入在线调试' }).count(), 0);
     await student.getByRole('link', { name: '题单', exact: true }).click();
@@ -95,6 +105,7 @@ const artifacts = path.resolve(__dirname, '../.artifacts/browser');
     const problemPaper = student.locator('.problem-paper');
     const submissionPanel = student.getByRole('region', { name: '代码提交区域' });
     await submissionPanel.waitFor();
+    await checkSumMath(problemPaper);
     const [paperBox, panelBox, contextBox] = await Promise.all([
       problemPaper.boundingBox(), submissionPanel.boundingBox(), sheetContext.boundingBox()
     ]);
@@ -142,7 +153,7 @@ const artifacts = path.resolve(__dirname, '../.artifacts/browser');
     const paneBoxes = await Promise.all((await debug.locator('.debug-pane').all()).map(pane => pane.boundingBox()));
     assert.equal(paneBoxes.length, 3);
     assert.ok(paneBoxes.every(pane => pane.y === resultRow.y && Math.abs(pane.width * 3 - resultRow.width) <= 1));
-    await debug.locator('.debug-statement').getByText('输入两个整数，输出它们的和。', { exact: true }).waitFor();
+    await checkSumMath(debug.locator('.debug-paper'));
     assert.equal(await debugEditor.inputValue(), 'int main() { return 0; }');
     const sampleInput = debug.getByRole('textbox', { name: '样例输入' });
     assert.equal(await sampleInput.inputValue(), '1 2');
@@ -230,6 +241,7 @@ const artifacts = path.resolve(__dirname, '../.artifacts/browser');
     await teacher.getByRole('link', { name: /两数求和.*Ada.*评测/ }).click();
     await teacher.getByRole('link', { name: '题目版本 v2' }).click();
     await teacher.getByText('1100', { exact: true }).waitFor();
+    await checkSumMath(teacher.locator('.paper'));
     assert.deepEqual(errors, []);
     console.log('PASS: browser OJ management, login, history, editor, submission and version');
   } finally {

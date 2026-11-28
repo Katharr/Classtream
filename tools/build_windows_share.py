@@ -14,7 +14,8 @@ FILES = (
     "install.ps1", "password.cmd", "refresh-network.ps1", "教师端说明.md",
     "学生端说明.md", "真机验收.md", "bin/CADDY-LICENSE.txt",
     "bin/CADDY-README.md", "bin/CADDY-VERIFICATION.txt",
-    "oj.py", "oj_store.py", "oj_queue.py", "oj_runner.py", "oj_sandbox.py", "oj.html", "oj.css", "oj.js",
+    "oj.py", "oj_store.py", "oj_library.py", "oj_queue.py", "oj_runner.py", "oj_sandbox.py", "oj.html", "oj.css", "oj.js",
+    "katex.min.js", "katex-auto-render.min.js", "KATEX-LICENSE.txt",
 )
 DEFAULTS = dict(mode="http", teacher_ip="192.0.2.1", http_port=80,
                 https_port=8443, backend_port=8000, fps=30,

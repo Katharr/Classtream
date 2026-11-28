@@ -47,6 +47,10 @@ class OJStore:
                     sample_output TEXT NOT NULL, time_ms INTEGER NOT NULL, memory_mb INTEGER NOT NULL,
                     groups_json TEXT NOT NULL, max_score INTEGER NOT NULL, PRIMARY KEY(problem_id, version)
                 );
+                CREATE TABLE IF NOT EXISTS oj_prepared_problems (
+                    source_id TEXT PRIMARY KEY, problem_id INTEGER NOT NULL UNIQUE REFERENCES oj_problems(id),
+                    digest TEXT NOT NULL, available INTEGER NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS oj_sheets (
                     id INTEGER PRIMARY KEY, title TEXT NOT NULL, is_open INTEGER NOT NULL DEFAULT 0 CHECK(is_open IN (0, 1))
                 );
@@ -71,6 +75,12 @@ class OJStore:
             columns = {column['name'] for column in connection.execute('PRAGMA table_info(oj_submissions)')}
             if 'custom_input' not in columns:
                 connection.execute('ALTER TABLE oj_submissions ADD COLUMN custom_input TEXT')
+            versions = {column['name'] for column in connection.execute('PRAGMA table_info(oj_problem_versions)')}
+            if 'prepared_json' not in versions:
+                connection.execute('ALTER TABLE oj_problem_versions ADD COLUMN prepared_json TEXT')
+            membership = {column['name'] for column in connection.execute('PRAGMA table_info(oj_sheet_problems)')}
+            if 'version' not in membership:
+                connection.execute('ALTER TABLE oj_sheet_problems ADD COLUMN version INTEGER')
             connection.execute('INSERT OR IGNORE INTO oj_settings VALUES (?, ?)',
                                ('default_password', 'xdf123'))
             migrated = connection.execute("INSERT OR IGNORE INTO oj_settings VALUES (?, ?)",
@@ -158,32 +168,60 @@ class OJStore:
                                    (self.token_hash(token),))
 
     @staticmethod
-    def problem_summary(connection, problem_id):
+    def problem_summary(connection, problem_id, version=None):
         row = connection.execute('''SELECT problem_id AS id, version, title, max_score FROM oj_problem_versions
-                                    WHERE problem_id=? ORDER BY version DESC LIMIT 1''', (problem_id,)).fetchone()
+                                    WHERE problem_id=? AND (? IS NULL OR version=?)
+                                    ORDER BY version DESC LIMIT 1''', (problem_id, version, version)).fetchone()
         return dict(row) if row else None
 
     def problems(self):
         with self.connect() as connection:
-            return [self.problem_summary(connection, row['id'])
-                    for row in connection.execute('SELECT id FROM oj_problems ORDER BY id DESC')]
+            rows = connection.execute('''SELECT p.id, source_id, available FROM oj_problems p
+                                        LEFT JOIN oj_prepared_problems s ON s.problem_id=p.id ORDER BY p.id DESC''')
+            items = []
+            for row in rows:
+                item = self.problem_summary(connection, row['id'])
+                if row['source_id'] is not None:
+                    prepared = self.require_problem(connection, row['id'])
+                    item.update(source_id=row['source_id'], available=bool(row['available']), tags=prepared['tags'])
+                items.append(item)
+            return items
 
     @staticmethod
     def require_problem(connection, problem_id, version=None, teacher=False):
-        row = connection.execute('''SELECT * FROM oj_problem_versions WHERE problem_id=? AND (? IS NULL OR version=?)
+        groups_column = ', groups_json' if teacher else ''
+        row = connection.execute(f'''SELECT problem_id, version, title, statement, sample_input, sample_output,
+                                    time_ms, memory_mb, max_score, prepared_json {groups_column}
+                                    FROM oj_problem_versions WHERE problem_id=? AND (? IS NULL OR version=?)
                                     ORDER BY version DESC LIMIT 1''', (problem_id, version, version)).fetchone()
         if row is None:
             raise OJError(404, '题目版本不存在')
         result = dict(row)
         result['id'] = result.pop('problem_id')
-        groups = result.pop('groups_json')
+        prepared = result.pop('prepared_json')
+        if prepared:
+            result.update(json.loads(prepared))
         if teacher:
-            result['groups'] = json.loads(groups)
+            result['groups'] = json.loads(result.pop('groups_json'))
         return result
 
     def problem(self, problem_id, version):
         with self.connect() as connection:
+            problem = self.require_problem(connection, problem_id, version)
+            if 'sample_cases' in problem:
+                return problem
             return self.require_problem(connection, problem_id, version, teacher=True)
+
+    @staticmethod
+    def insert_problem_version(connection, problem_id, version, problem, prepared=None):
+        groups = problem['groups']
+        max_score = 100 if prepared else max(group['score'] for group in groups)
+        connection.execute('''INSERT INTO oj_problem_versions
+            (problem_id, version, title, statement, sample_input, sample_output, time_ms, memory_mb,
+             groups_json, max_score, prepared_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (problem_id, version, problem['title'], problem['statement'], problem['sample_input'],
+             problem['sample_output'], problem['time_ms'], problem['memory_mb'],
+             json.dumps(groups, ensure_ascii=False), max_score, json.dumps(prepared, ensure_ascii=False) if prepared else None))
 
     def save_problem(self, problem, problem_id=None):
         with self.connect(write=True) as connection:
@@ -192,13 +230,45 @@ class OJStore:
                 problem_id = connection.execute('INSERT INTO oj_problems DEFAULT VALUES').lastrowid
             else:
                 previous = self.require_problem(connection, problem_id)
+                if 'sample_cases' in previous:
+                    raise OJError(409, '请从备课目录更新此题')
                 version = previous['version'] + 1
-            groups = problem['groups']
-            connection.execute('''INSERT INTO oj_problem_versions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                               (problem_id, version, problem['title'], problem['statement'], problem['sample_input'],
-                                problem['sample_output'], problem['time_ms'], problem['memory_mb'],
-                                json.dumps(groups, ensure_ascii=False), max(group['score'] for group in groups)))
+            self.insert_problem_version(connection, problem_id, version, problem)
             return dict(id=problem_id, version=version)
+
+    def sync_prepared(self, problems):
+        report = dict(added=0, updated=0, unchanged=0)
+        with self.connect(write=True) as connection:
+            rows = connection.execute('SELECT * FROM oj_prepared_problems').fetchall()
+            current = {row['source_id']: row for row in rows}
+            connection.executemany('UPDATE oj_prepared_problems SET available=0 WHERE source_id=?',
+                                   ((key,) for key in current.keys() - problems.keys() if current[key]['available']))
+            for source_id, (problem, digest) in problems.items():
+                previous = current.get(source_id)
+                if previous and previous['digest'] == digest:
+                    if not previous['available']:
+                        connection.execute('UPDATE oj_prepared_problems SET available=1 WHERE source_id=?', (source_id,))
+                    report['unchanged'] += 1
+                    continue
+                if previous:
+                    problem_id = previous['problem_id']
+                    version = self.problem_summary(connection, problem_id)['version'] + 1
+                    connection.execute('UPDATE oj_prepared_problems SET digest=?, available=1 WHERE source_id=?',
+                                       (digest, source_id))
+                    report['updated'] += 1
+                else:
+                    problem_id = connection.execute('INSERT INTO oj_problems DEFAULT VALUES').lastrowid
+                    version = 1
+                    connection.execute('INSERT INTO oj_prepared_problems VALUES (?, ?, ?, 1)',
+                                       (source_id, problem_id, digest))
+                    report['added'] += 1
+                sample = problem['sample_cases'][0]
+                prepared = {field: problem[field] for field in
+                            ('input_format', 'output_format', 'constraints', 'tags', 'sample_cases')}
+                self.insert_problem_version(connection, problem_id, version,
+                                            {**problem, 'sample_input': sample['input'], 'sample_output': sample['output'],
+                                             'groups': problem['judge_cases']}, prepared)
+        return report
 
     @staticmethod
     def sheet_summary(row):
@@ -218,30 +288,52 @@ class OJStore:
     def sheet(self, sheet_id):
         with self.connect() as connection:
             result = self.sheet_summary(self.require_sheet(connection, sheet_id))
-            result['problems'] = [self.problem_summary(connection, row['problem_id']) for row in connection.execute(
-                'SELECT problem_id FROM oj_sheet_problems WHERE sheet_id=? ORDER BY position', (sheet_id,))]
+            result['problems'] = [self.problem_summary(connection, row['problem_id'], row['version'])
+                                  for row in connection.execute(
+                'SELECT problem_id, version FROM oj_sheet_problems WHERE sheet_id=? ORDER BY position', (sheet_id,))]
             return result
 
     def save_sheet(self, sheet, sheet_id=None):
         with self.connect(write=True) as connection:
+            pinned = {}
+            already_open = False
             if sheet_id is None:
                 sheet_id = connection.execute('INSERT INTO oj_sheets(title) VALUES (?)', (sheet['title'],)).lastrowid
             else:
-                self.require_sheet(connection, sheet_id)
+                already_open = bool(self.require_sheet(connection, sheet_id)['is_open'])
+                pinned = {row['problem_id']: row['version'] for row in connection.execute(
+                    'SELECT problem_id, version FROM oj_sheet_problems WHERE sheet_id=?', (sheet_id,))}
                 connection.execute('UPDATE oj_sheets SET title=? WHERE id=?', (sheet['title'], sheet_id))
                 connection.execute('DELETE FROM oj_sheet_problems WHERE sheet_id=?', (sheet_id,))
             try:
-                connection.executemany('INSERT INTO oj_sheet_problems VALUES (?, ?, ?)',
-                                       ((sheet_id, problem_id, position)
+                connection.executemany('''INSERT INTO oj_sheet_problems (sheet_id, problem_id, position, version)
+                                           VALUES (?, ?, ?, ?)''',
+                                       ((sheet_id, problem_id, position, pinned.get(problem_id))
                                         for position, problem_id in enumerate(sheet['problem_ids'])))
             except sqlite3.IntegrityError as exc:
                 raise OJError(422, '题目不存在或重复') from exc
             if sheet['open']:
                 self.set_open(connection, sheet_id)
+            else:
+                self.pin_sheet_versions(connection, sheet_id, open_sheet=already_open)
             return dict(id=sheet_id)
 
     @staticmethod
+    def pin_sheet_versions(connection, sheet_id, open_sheet):
+        rows = connection.execute('''SELECT sp.problem_id, source.available
+            FROM oj_sheet_problems sp JOIN oj_prepared_problems source ON source.problem_id=sp.problem_id
+            WHERE sp.sheet_id=? AND sp.version IS NULL''', (sheet_id,))
+        for row in rows:
+            if not row['available']:
+                raise OJError(422, '题单中有暂不可布置的备课题')
+            if open_sheet:
+                version = OJStore.problem_summary(connection, row['problem_id'])['version']
+                connection.execute('UPDATE oj_sheet_problems SET version=? WHERE sheet_id=? AND problem_id=?',
+                                   (version, sheet_id, row['problem_id']))
+
+    @staticmethod
     def set_open(connection, sheet_id):
+        OJStore.pin_sheet_versions(connection, sheet_id, open_sheet=True)
         connection.execute('UPDATE oj_sheets SET is_open=0 WHERE is_open=1')
         connection.execute('UPDATE oj_sheets SET is_open=1 WHERE id=?', (sheet_id,))
 
@@ -252,21 +344,23 @@ class OJStore:
 
     def require_sheet_problem(self, connection, sheet_id, problem_id):
         sheet = self.require_sheet(connection, sheet_id)
-        if connection.execute('SELECT 1 FROM oj_sheet_problems WHERE sheet_id=? AND problem_id=?',
-                              (sheet_id, problem_id)).fetchone() is None:
+        membership = connection.execute('SELECT version FROM oj_sheet_problems WHERE sheet_id=? AND problem_id=?',
+                                        (sheet_id, problem_id)).fetchone()
+        if membership is None:
             raise OJError(404, '题目不在此题单中')
-        return sheet
+        return sheet, membership['version']
 
     def sheet_problem(self, sheet_id, problem_id):
         with self.connect() as connection:
-            sheet = self.require_sheet_problem(connection, sheet_id, problem_id)
-            return {**self.require_problem(connection, problem_id), 'open': bool(sheet['is_open'])}
+            sheet, version = self.require_sheet_problem(connection, sheet_id, problem_id)
+            return {**self.require_problem(connection, problem_id, version), 'open': bool(sheet['is_open'])}
 
     def submit(self, student_id, sheet_id, problem_id, kind, source, expected_version, custom_input=None):
         with self.connect(write=True) as connection:
-            if not self.require_sheet_problem(connection, sheet_id, problem_id)['is_open']:
+            sheet, pinned = self.require_sheet_problem(connection, sheet_id, problem_id)
+            if not sheet['is_open']:
                 raise OJError(409, '历史题单只能查看')
-            version = self.require_problem(connection, problem_id)['version']
+            version = self.require_problem(connection, problem_id, pinned)['version']
             if expected_version is not None and expected_version != version:
                 raise OJError(409, '题目已更新。请刷新题面后重新提交', 'problem_version_changed')
             now = time.time()
@@ -323,7 +417,8 @@ class OJStore:
                 return None
             connection.execute("UPDATE oj_submissions SET status='running' WHERE id=?", (row['id'],))
             problem = self.require_problem(connection, row['problem_id'], row['version'], teacher=True)
-            return {**problem, 'id': row['id'], 'kind': row['kind'], 'source': row['source'], 'custom_input': row['custom_input']}
+            return {**problem, 'id': row['id'], 'kind': row['kind'], 'source': row['source'], 'custom_input': row['custom_input'],
+                    'sum_scores': 'sample_cases' in problem}
 
     def complete(self, submission_id, result):
         with self.connect(write=True) as connection:

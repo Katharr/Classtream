@@ -9,6 +9,9 @@ import tempfile
 import time
 
 
+MAX_OUTPUT_BYTES = 256 * 1024
+
+
 class Startup(ct.Structure):
     _fields_ = [('size', win.DWORD), ('reserved', win.LPWSTR), ('desktop', win.LPWSTR), ('title', win.LPWSTR),
                 ('dimensions', win.DWORD * 8), ('show', win.WORD), ('reserved_size', win.WORD),
@@ -202,7 +205,7 @@ class WindowsSandbox:
         output = bytearray()
         pipe_handle = msvcrt.get_osfhandle(pipe.fileno())
         available, message, key, overlapped = win.DWORD(), win.DWORD(), ct.c_size_t(), ct.c_void_p()
-        max_output = 262144
+        max_output = MAX_OUTPUT_BYTES
         check_disk = 0.0
         while not stop.is_set():
             while kernel.GetQueuedCompletionStatus(port, ct.byref(message), ct.byref(key), ct.byref(overlapped), 0):

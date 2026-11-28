@@ -60,6 +60,7 @@ def create_application(public_url, fps=30, teacher_url=None, *, oj_runner=None):
     from teacher_hotkeys import TeacherShortcuts
     from app.paths import DB_PATH
     from oj import install_oj
+    from oj_library import PreparedLibrary
     from oj_queue import OJQueue
     from oj_store import OJStore
     oj_store = OJStore(DB_PATH)
@@ -121,7 +122,8 @@ def create_application(public_url, fps=30, teacher_url=None, *, oj_runner=None):
         return token if is_local(request) and token in state.admin_tokens else None
 
     install_discussion(application, local_teacher)
-    install_oj(application, oj_store, oj_queue, local_teacher, is_local)
+    install_oj(application, oj_store, oj_queue, local_teacher, is_local,
+               PreparedLibrary(deployment_home / 'config.json', oj_store))
 
     @application.get('/api/teacher-shortcuts')
     async def shortcut_status(request: Request):

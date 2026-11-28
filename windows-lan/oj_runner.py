@@ -131,7 +131,7 @@ class WindowsJudge:
                 status = 'accepted' if matches_output(output, group['output'].encode('utf-8')) else 'wrong_answer'
             cases.append(dict(verdict=status, points=group['score']))
             if status == 'accepted':
-                score = max(score, group['score'])
+                score = score + group['score'] if task.get('sum_scores') else max(score, group['score'])
         failed = [case['verdict'] for case in cases if case['verdict'] != 'accepted']
         verdict = ('partial' if score else failed[0]) if failed else 'accepted'
         result = dict(verdict=verdict, score=score, cases=cases)
