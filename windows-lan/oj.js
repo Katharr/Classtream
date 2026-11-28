@@ -36,6 +36,8 @@ const sheetBadge = sheet => badge(sheet.open ? '开放' : '历史', sheet.open ?
 const pre = text => element('pre', {}, text);
 const empty = text => element('p', { class: 'empty' }, text);
 const errorLine = () => element('p', { class: 'feedback', role: 'status', hidden: true });
+const draftKey = problemId => `oj-draft:${identity.id}:${problemId}`;
+const submissionPath = (sheetId, problemId) => `/sheets/${sheetId}/problems/${problemId}/submissions`;
 
 function feedback(node, text, positive = false) {
   node.textContent = text;
@@ -200,19 +202,11 @@ function sheetProgress(sheet, current, className) {
     setTimeout(refreshProgress, 1000);
   }
   watch();
-  return {
-    nodes,
-    submitted(problem, submission) {
-      const latest = { ...submission, max_score: problem.max_score };
-      showProblemProgress(nodes.get(problem.id), { ...problem, latest_submission: latest });
-      pending.set(problem.id, latest);
-      watch();
-    }
-  };
+  return nodes;
 }
 
 function studentSheet(sheet, current) {
-  const { nodes } = sheetProgress(sheet, current, 'record-end');
+  const nodes = sheetProgress(sheet, current, 'record-end');
   return [link('返回题单', '#sheets', 'back'), element('section', { class: 'catalog' },
     heading(sheet.title, sheetBadge(sheet)), rows(sheet.problems, (problem, index) =>
       element('a', { class: 'row-link problem-row', href: `#sheets/${sheet.id}/${problem.id}` },
@@ -231,35 +225,41 @@ function mark(record) {
   return badge(verdicts[key] || '未知状态', color);
 }
 
-function result(record, showOutputHeading = true) {
-  return [element('div', { class: 'result-title' }, mark(record),
-    record.kind === 'judge' && record.score !== undefined ? element('strong', {}, `${record.score} / ${record.max_score} 分`) : null),
-  record.detail ? pre(record.detail) : null,
-  record.output !== undefined ? (showOutputHeading
-    ? element('section', {}, element('h3', {}, '程序输出'), pre(record.output)) : pre(record.output)) : null,
-  record.kind === 'judge' && record.cases?.length ? element('ol', { class: 'test-results' }, record.cases.map(group =>
-    element('li', {}, element('span', {}, `${group.points} 分组`), mark(group)))) : null];
+function sampleOutput(record, showOutputHeading = true) {
+  return [record.detail ? pre(record.detail) : null,
+    record.output !== undefined ? (showOutputHeading
+      ? element('section', {}, element('h3', {}, '程序输出'), pre(record.output)) : pre(record.output)) : null].filter(Boolean);
 }
 
-function pollSubmission(id, area, current) {
-  const { updates, notice, showOutputHeading } = area;
+function watchSubmission(id, current, { target, notice, update, pending, refreshButton }) {
   const token = {};
-  pollTokens.set(updates, token);
-  const active = () => current === revision && pollTokens.get(updates) === token;
-  async function poll() {
-    if (!active()) return;
+  pollTokens.set(target, token);
+  const active = () => current === revision && pollTokens.get(target) === token;
+  let timer;
+  let loading = false;
+  async function refresh() {
+    if (!active() || loading) return;
+    clearTimeout(timer);
+    loading = true;
+    if (refreshButton) refreshButton.disabled = true;
     try {
       const record = await api('/submissions/' + id);
       if (!active()) return;
-      updates.replaceChildren(...result(record, showOutputHeading).filter(Boolean));
-      if (record.status !== 'finished') setTimeout(poll, 750);
+      feedback(notice, '');
+      update(record);
+      pending = record.status !== 'finished';
     } catch (error) {
       if (!active()) return;
       feedback(notice, error.message);
-      if (![401, 403, 404].includes(error.status)) setTimeout(poll, 750);
+      if ([401, 403, 404].includes(error.status)) pending = false;
+    } finally {
+      loading = false;
+      if (refreshButton) refreshButton.disabled = false;
+      if (active() && pending) timer = setTimeout(refresh, 750);
     }
   }
-  setTimeout(poll, 750);
+  if (pending) timer = setTimeout(refresh, 750);
+  return refresh;
 }
 
 function sheetContext(sheet, problem, progress) {
@@ -318,8 +318,8 @@ function studentProblem(problem, sheet, current) {
   return [link('返回题单', `#sheets/${sheet.id}`, 'back mobile-sheet-back'),
     element('div', { class: 'problem-layout' },
       element('div', { class: 'problem-main' }, problemPaper(problem, 'paper problem-paper'),
-        problem.open ? submissionPanel(problem, sheet.id, current, progress.submitted) : null),
-      sheetContext(sheet, problem, progress.nodes))];
+        problem.open ? submissionPanel(problem, sheet.id, current) : null),
+      sheetContext(sheet, problem, progress))];
 }
 
 const cppTypes = new Set('auto bool char char16_t char32_t double float int long short signed unsigned void wchar_t'.split(' '));
@@ -355,13 +355,13 @@ function highlightCpp(source) {
   return fragment;
 }
 
-function sourceEditor(id, value, onEdit, fullscreen = false) {
+function sourceEditor(id, value, onEdit, { lineNumbers: numbered = false, autofocus = false, readOnly = false } = {}) {
   const input = element('textarea', { id, class: 'editor', maxlength: 65536, spellcheck: 'false',
-    autocapitalize: 'off', autocomplete: 'off', wrap: fullscreen ? 'off' : 'soft',
-    'aria-label': fullscreen ? 'C++17 源码' : undefined, autofocus: fullscreen });
+    autocapitalize: 'off', autocomplete: 'off', wrap: numbered ? 'off' : 'soft', readonly: readOnly,
+    'aria-label': autofocus ? 'C++17 源码' : undefined, autofocus });
   const syntax = element('div', { class: 'editor-syntax', 'aria-hidden': 'true', tabindex: '-1' });
   const surface = element('div', { class: 'editor-surface' }, syntax, input);
-  const lineNumbers = fullscreen ? element('pre', { class: 'debug-line-numbers', 'aria-hidden': 'true' }) : null;
+  const lineNumbers = numbered ? element('pre', { class: 'editor-line-numbers', 'aria-hidden': 'true' }) : null;
 
   function syncScroll() {
     syntax.scrollTop = input.scrollTop;
@@ -386,7 +386,7 @@ function sourceEditor(id, value, onEdit, fullscreen = false) {
   });
   input.addEventListener('scroll', syncScroll);
   setValue(value);
-  const node = fullscreen ? element('div', { class: 'debug-source' }, lineNumbers, surface) : surface;
+  const node = numbered ? element('div', { class: 'numbered-editor' }, lineNumbers, surface) : surface;
   return { input, node, setValue };
 }
 
@@ -436,15 +436,18 @@ function debugDialog(problem, area, run, submit) {
   return dialog;
 }
 
-function submissionPanel(problem, sheetId, current, onSubmitted) {
-  const draft = `oj-draft:${identity.id}:${problem.id}`;
+function submissionPanel(problem, sheetId, current) {
+  const draft = draftKey(problem.id);
   const initialSource = sessionStorage.getItem(draft) || '';
   function saveDraft(source, otherEditor) {
     otherEditor.setValue(source);
     sessionStorage.setItem(draft, source);
   }
   const main = evaluationArea(sourceEditor('source', initialSource, source => saveDraft(source, debug.editor)));
-  const debug = evaluationArea(sourceEditor('debug-source', initialSource, source => saveDraft(source, main.editor), true), false);
+  const debugEditor = sourceEditor('debug-source', initialSource, source => saveDraft(source, main.editor),
+    { lineNumbers: true, autofocus: true });
+  debugEditor.node.classList.add('debug-source');
+  const debug = evaluationArea(debugEditor, false);
 
   async function send(kind, area, control, customInput = null) {
     if (area.pending) return;
@@ -458,11 +461,16 @@ function submissionPanel(problem, sheetId, current, onSubmitted) {
     try {
       const payload = { kind, source: area.editor.input.value, version: problem.version };
       if (customInput !== null) payload.custom_input = customInput;
-      const submission = await api(`/sheets/${sheetId}/problems/${problem.id}/submissions`, 'POST', payload);
+      const submission = await api(submissionPath(sheetId, problem.id), 'POST', payload);
       if (current !== revision) return;
-      if (kind === 'judge') onSubmitted(problem, submission);
+      if (kind === 'judge') {
+        if (dialog.open) dialog.close();
+        goto('#submissions/' + submission.id);
+        return;
+      }
       area.updates.replaceChildren(mark(submission), link('查看提交', '#submissions/' + submission.id));
-      pollSubmission(submission.id, area, current);
+      watchSubmission(submission.id, current, { target: area.updates, notice: area.notice, pending: true,
+        update: record => area.updates.replaceChildren(mark(record), ...sampleOutput(record, area.showOutputHeading)) });
     } catch (error) {
       area.reloadButton.hidden = error.code !== 'problem_version_changed';
       feedback(area.notice, error.message);
@@ -491,19 +499,142 @@ function submissionList(records, before) {
       records.length === 50 ? link('更早记录', '#submissions/before/' + records.at(-1).id, 'button') : null)];
 }
 
-function submissionDetail(record, current) {
+function detailPanel(name, ...content) {
+  return element('section', { class: 'detail-panel' }, element('h2', { class: 'panel-title' }, name),
+    element('div', { class: 'detail-body' }, ...content));
+}
+
+function detailFields(fields) {
+  return element('dl', {}, fields.map(([name, value]) =>
+    element('div', {}, element('dt', {}, name), element('dd', {}, value))));
+}
+
+function usageText(value, format) {
+  return value == null ? '—' : format(value);
+}
+
+const milliseconds = value => `${value} ms`;
+const kibibytes = value => `${(value / 1024).toLocaleString('zh-CN', { maximumFractionDigits: 1 })} KiB`;
+
+function maxUsage(record, key) {
+  const values = (record.cases || []).map(test => test[key]).filter(Number.isFinite);
+  return values.length ? Math.max(...values) : null;
+}
+
+function judgeCases(record, expanded) {
+  if (record.status !== 'finished') return element('p', { class: 'meta' }, '评测结束后显示测试点结果。');
+  if (!record.cases?.length) return record.detail ? pre(record.detail) : element('p', { class: 'meta' }, '没有测试点结果。');
+  const mode = { sum: '独立计分', max: '取最高分' }[record.scoring];
+  return element('details', { class: 'judge-cases', open: expanded },
+    element('summary', {}, '默认分组', mode ? element('span', { class: 'case-mode' }, mode) : null,
+      element('span', {}, `${record.score} / ${record.max_score}`)),
+    element('ol', { class: 'case-grid' }, record.cases.map((test, index) =>
+      element('li', { class: 'case-card' }, element('span', { class: 'case-number' }, `#${index + 1}`),
+        element('div', { class: 'case-outcome' }, mark(test),
+          element('strong', {}, `${test.verdict === 'accepted' ? test.points : 0} / ${test.points} 分`)),
+        test.time_ms != null || test.memory_bytes != null ? element('p', { class: 'meta' },
+          `${usageText(test.time_ms, milliseconds)} · ${usageText(test.memory_bytes, kibibytes)}`) : null))));
+}
+
+function submissionCode(record, problemHref, current) {
+  const original = record.source.replace(/\r\n?/g, '\n');
   const notice = errorLine();
-  const updates = element('div', { class: 'judge-result', 'aria-live': 'polite' }, result(record));
-  if (record.status !== 'finished') pollSubmission(record.id, { updates, notice, showOutputHeading: true }, current);
-  const testData = record.kind === 'sample' ? element('div', { class: 'samples' },
+  const send = button('再次提交', resubmit, 'button primary');
+  const latestProblem = link('打开最新题面', problemHref, 'button');
+  latestProblem.hidden = true;
+  latestProblem.addEventListener('click', () => sessionStorage.setItem(draftKey(record.problem_id), editor.input.value));
+  let editable = false;
+  const editor = sourceEditor('submitted-source', original, syncAction, { lineNumbers: true, readOnly: true });
+
+  function syncAction() {
+    send.hidden = !editable || editor.input.value === original;
+    send.disabled = !editor.input.value.trim() || !latestProblem.hidden;
+    feedback(notice, '');
+  }
+
+  async function resubmit() {
+    if (send.disabled || send.hidden) return;
+    const source = editor.input.value;
+    send.disabled = editor.input.readOnly = true;
+    feedback(notice, '');
+    try {
+      const retry = await api(submissionPath(record.sheet_id, record.problem_id), 'POST',
+        { kind: 'judge', source, version: record.version });
+      if (current === revision) {
+        sessionStorage.setItem(draftKey(record.problem_id), source);
+        goto('#submissions/' + retry.id);
+      }
+    } catch (error) {
+      if (current !== revision) return;
+      latestProblem.hidden = error.code !== 'problem_version_changed';
+      editor.input.readOnly = !editable;
+      send.disabled = !latestProblem.hidden;
+      feedback(notice, error.message);
+    }
+  }
+
+  return {
+    node: detailPanel('代码', element('label', { for: editor.input.id, class: 'code-label' }, 'C++17 源码'),
+      editor.node, element('div', { class: 'detail-code-actions' }, send, latestProblem, notice)),
+    update(record) {
+      const allowed = !teacher && Boolean(record.can_resubmit);
+      if (allowed === editable) return;
+      editable = allowed;
+      editor.input.readOnly = !allowed;
+      syncAction();
+    }
+  };
+}
+
+function submissionDetail(record, current) {
+  const judge = record.kind === 'judge';
+  const problemHref = `#sheets/${record.sheet_id}/${record.problem_id}`;
+  const problemTitle = !teacher && record.problem_in_sheet ? link(record.title, problemHref) : record.title;
+  const versionLabel = `题目版本 v${record.version}`;
+  const problemVersion = teacher ? link(versionLabel, `#problems/${record.problem_id}/${record.version}`) : versionLabel;
+  const notice = errorLine();
+  const refreshButton = button('刷新', () => void refresh());
+  const overview = element('div', { class: 'detail-overview', 'aria-live': 'polite' });
+  const preliminary = element('p', { class: 'preliminary-result' });
+  const finalResults = element('div', { class: 'detail-results' });
+  const code = submissionCode(record, problemHref, current);
+
+  function update(record) {
+    overview.replaceChildren(detailFields([
+      ['提交编号', `#${record.id}`], ['提交人', record.username],
+      ['题目', element('span', { class: 'detail-problem' }, problemTitle, element('small', { class: 'meta' }, problemVersion))],
+      ['提交时间', timeText(record.created_at)]
+    ]), detailFields(judge ? [
+      ['最终结果', mark(record)], ['最终得分', `${record.score ?? '—'} / ${record.max_score} 分`],
+      ['最大运行耗时', usageText(maxUsage(record, 'time_ms'), milliseconds)],
+      ['最大内存占用', usageText(maxUsage(record, 'memory_bytes'), kibibytes)]
+    ] : [['运行结果', mark(record)]]));
+    if (judge) {
+      let sample = record.status === 'finished' ? '无初测记录' : '等待评测';
+      if (record.sample_verdict) sample = record.sample_verdict === 'accepted' ? '全部通过' : verdicts[record.sample_verdict];
+      preliminary.textContent = `初测结论：${sample}`;
+      const group = finalResults.querySelector('details');
+      finalResults.replaceChildren(judgeCases(record, group?.open ?? true));
+    } else {
+      finalResults.replaceChildren(...sampleOutput(record));
+    }
+    code.update(record);
+  }
+
+  update(record);
+  const refresh = watchSubmission(record.id, current,
+    { target: overview, notice, update, pending: record.status !== 'finished', refreshButton });
+  const samples = judge ? null : element('div', { class: 'samples detail-samples' },
     element('section', {}, element('h3', {}, record.custom_input !== null ? '自定义输入' : '样例输入'), pre(record.test_input)),
     record.expected_output !== null
-      ? element('section', {}, element('h3', {}, '预期输出'), pre(record.expected_output)) : null) : null;
-  return [link('返回提交记录', '#submissions', 'back'),
-    element('article', { class: 'paper submission-detail' }, title(record.title),
-      element('p', { class: 'meta' }, `${teacher ? record.username + '　' : ''}${timeText(record.created_at)}　${record.kind === 'sample' ? '样例' : '评测'}　`,
-        teacher ? link(`题目版本 v${record.version}`, `#problems/${record.problem_id}/${record.version}`) : `题目版本 v${record.version}`),
-      testData, updates, notice, element('h2', {}, '提交源码'), pre(record.source))];
+      ? element('section', {}, element('h3', {}, '预期输出'), pre(record.expected_output)) : null);
+  return element('article', { class: 'submission-detail' },
+    element('section', { class: 'detail-panel' },
+      element('header', { class: 'panel-title detail-heading' }, title('提交记录详情'),
+        link('返回提交记录', '#submissions'), refreshButton),
+      element('div', { class: 'detail-body' }, overview, notice)),
+    judge ? detailPanel('初步测试详情', preliminary) : null,
+    detailPanel(judge ? '最终结果详情' : '运行详情', samples, finalResults), code.node);
 }
 
 function roster(data) {

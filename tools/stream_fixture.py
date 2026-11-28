@@ -30,7 +30,9 @@ class BrowserJudge:
             if task['custom_input'] is not None:
                 return dict(verdict='executed', score=0, output=task['custom_input'])
             return dict(verdict='accepted', score=0, output='3\n')
-        return dict(verdict='accepted', score=task['max_score'])
+        return dict(verdict='accepted', score=task['max_score'], sample_verdict='accepted', scoring='max',
+                    cases=[dict(verdict='accepted', points=group['score'], time_ms=4, memory_bytes=2048)
+                           for group in task['groups']])
 
 
 app = create_application(f'http://127.0.0.1:{PORT}', fps=30, oj_runner=BrowserJudge())

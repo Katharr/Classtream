@@ -128,7 +128,39 @@ select { width: min(100%, 24rem); min-height: 40px; }
 .problem-number { color: var(--accent); font-size: .89em; }
 .paper > h2:first-child { margin-top: 0; }
 .paper > .meta { margin-block: .55rem .8rem; }
-.submission-detail { width: min(100%, 930px); }
+.submission-detail { display: grid; gap: 1rem; min-width: 0; }
+.detail-panel { min-width: 0; border: 1px solid var(--line); background: var(--paper); }
+.detail-panel:first-child { border-top: 3px solid var(--accent); }
+.detail-heading { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem 1rem; }
+.detail-heading h1 { font-size: 1.25rem; }
+.detail-heading a { font-size: .88rem; font-weight: 400; }
+.detail-heading .button { margin-inline-start: auto; font-size: .88rem; }
+.detail-body { padding: var(--panel-inset); display: grid; gap: .8rem; min-width: 0; }
+.detail-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--line); }
+.detail-overview dl { margin: 0; }
+.detail-overview dl + dl { border-inline-start: 1px solid var(--line); }
+.detail-overview dl > div { display: grid; grid-template-columns: minmax(8rem, 35%) minmax(0, 1fr); min-height: 2.7rem; }
+.detail-overview dl > div + div { border-top: 1px solid var(--line); }
+.detail-overview dt, .detail-overview dd { padding: .55rem .75rem; align-content: center; margin: 0; overflow-wrap: anywhere; }
+.detail-overview dt { background: #f6f4f7; color: var(--muted); font-size: .9rem; border-inline-end: 1px solid var(--line); }
+.detail-overview dd { font-variant-numeric: tabular-nums; }
+.detail-problem { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .65rem; }
+.preliminary-result { padding: .6rem .85rem; background: var(--accent-tint); border-inline-start: 3px solid var(--accent); }
+.judge-cases { border: 1px solid var(--line); }
+.judge-cases summary { padding: .68rem .9rem; cursor: pointer; background: #f6f4f7; }
+.judge-cases summary span { margin-inline-start: .65rem; }
+.case-mode { color: var(--accent-deep); background: var(--accent-tint); border: 1px solid var(--line); padding: .1rem .36rem; font-size: .8rem; }
+.case-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr)); gap: .65rem;
+  margin: 0; padding: .8rem; list-style: none; border-top: 1px solid var(--line); }
+.case-card { padding: .55rem .65rem; border: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.case-number { display: block; color: var(--muted); font-size: .81rem; }
+.case-outcome { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .3rem; margin-block: .22rem; }
+.case-outcome strong { font-size: .87rem; }
+.detail-code-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .55rem .8rem; }
+.detail-code-actions:not(:has(> :not([hidden]))) { display: none; }
+.detail-samples { margin: 0; padding: 0; border: 0; }
+.detail-results:empty { display: none; }
+.submission-detail .numbered-editor { height: clamp(16rem, 50vh, 28rem); }
 .statement { white-space: pre-wrap; overflow-wrap: anywhere; }
 .paper .statement { line-height: 1.9; }
 .samples { margin-top: 1.3rem; border-top: 1px solid var(--line); padding-top: 1rem; }
@@ -169,14 +201,9 @@ pre { padding: .7rem .82rem; margin: 0; max-height: 24rem; overflow: auto; white
 }
 .judge-result { display: grid; gap: .65rem; }
 .judge-result:not(:empty) { margin-top: .65rem; padding: .75rem; border: 1px solid var(--line); background: #faf9fb; }
-.result-title { display: flex; flex-wrap: wrap; gap: .7rem; align-items: center; }
-.test-results { margin: 0; padding-left: 1.4rem; }
-.test-results li { margin-block: .22rem; }
-.test-results .badge { margin-left: .6rem; }
 .debug-dialog {
   --debug-chrome: #422e52;
   --debug-toolbar: #283b4f;
-  --debug-editor: #232936;
   --debug-data: #f1f4f8;
   --debug-divider: #d4dce7;
   inset: 0;
@@ -222,14 +249,14 @@ pre { padding: .7rem .82rem; margin: 0; max-height: 24rem; overflow: auto; white
   min-width: 0;
   min-height: 0;
 }
-.debug-source {
+.numbered-editor {
   display: grid;
-  grid-template-columns: 2.6rem minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   min-height: 0;
-  background: var(--debug-editor);
+  background: #232936;
 }
-.debug-source .editor-surface { border: 0; border-radius: 0; background: transparent; }
-.debug-source .editor, .debug-source .editor-syntax, .debug-line-numbers {
+.numbered-editor .editor-surface { border: 0; border-radius: 0; background: transparent; }
+.numbered-editor .editor, .numbered-editor .editor-syntax, .editor-line-numbers {
   min-height: 0;
   max-height: none;
   padding: .6rem .75rem;
@@ -238,11 +265,12 @@ pre { padding: .7rem .82rem; margin: 0; max-height: 24rem; overflow: auto; white
   font-size: .92rem;
   line-height: 1.55;
 }
-.debug-source .editor, .debug-source .editor-syntax { white-space: pre; overflow-wrap: normal; }
-.debug-source .editor { height: 100%; resize: none; }
-.debug-source .editor:focus-visible { outline: 2px solid #8996ad; outline-offset: -2px; }
-.debug-line-numbers {
-  padding-inline: 0 .45rem;
+.numbered-editor .editor, .numbered-editor .editor-syntax { white-space: pre; overflow-wrap: normal; }
+.numbered-editor .editor { height: 100%; resize: none; }
+.numbered-editor .editor:focus-visible { outline: 2px solid #8996ad; outline-offset: -2px; }
+.editor-line-numbers {
+  min-width: 2.6rem;
+  padding-inline: .35rem .45rem;
   padding-bottom: calc(.6rem + 17px);
   overflow: hidden;
   white-space: pre;
@@ -288,6 +316,8 @@ pre { padding: .7rem .82rem; margin: 0; max-height: 24rem; overflow: auto; white
 
 @media (max-width: 780px) {
   .frame { width: calc(100% - 2rem); }
+  .detail-overview { grid-template-columns: minmax(0, 1fr); }
+  .detail-overview dl + dl { border-inline-start: 0; border-top: 1px solid var(--line); }
   .problem-layout { grid-template-columns: minmax(0, 1fr); }
   .sheet-context { position: static; max-height: none; }
   .mobile-sheet-back { display: inline-block; }
@@ -307,6 +337,7 @@ pre { padding: .7rem .82rem; margin: 0; max-height: 24rem; overflow: auto; white
   .pair { grid-template-columns: minmax(0, 1fr); }
   .record-end { justify-items: end; display: grid; }
   .editor { min-height: 14rem; }
+  .detail-overview dl > div { grid-template-columns: minmax(6.9rem, 39%) minmax(0, 1fr); }
   .debug-header { grid-template-columns: auto minmax(0, 1fr) auto; padding-inline: .65rem; }
   .debug-pane-title { padding-inline: .45rem; font-size: .75rem; }
   .debug-pane textarea, .debug-pane > pre, .debug-result { padding-inline: .45rem; }

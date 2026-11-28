@@ -132,12 +132,34 @@ async function checkSumMath(paper) {
     await student.getByRole('button', { name: '刷新题面' }).click();
     await student.getByRole('button', { name: '刷新题面' }).waitFor({ state: 'hidden' });
     assert.equal(await sourceEditor.inputValue(), 'int main() { return 0; }');
+    const originalCode = await sourceEditor.inputValue();
     await student.getByRole('button', { name: '提交评测' }).click();
-    await submissionPanel.getByText('100 / 100 分', { exact: true }).waitFor();
+    const detail = student.locator('.submission-detail');
+    await detail.getByRole('heading', { name: '提交记录详情' }).waitFor();
+    const judgeId = student.url().split('/').at(-1);
+    assert.match(judgeId, /^\d+$/);
+    await detail.locator('.detail-overview').getByText('100 / 100 分', { exact: true }).waitFor();
+    await detail.getByText('初测结论：全部通过', { exact: true }).waitFor();
+    await detail.locator('.detail-overview').getByText('4 ms', { exact: true }).waitFor();
+    await detail.locator('.case-card').first().getByText('4 ms · 2 KiB', { exact: true }).waitFor();
+    const detailEditor = detail.getByRole('textbox', { name: 'C++17 源码' });
+    const retry = detail.getByRole('button', { name: '再次提交' });
+    assert.equal(await detailEditor.inputValue(), originalCode);
+    assert.equal(await retry.isVisible(), false);
+    await student.screenshot({ path: path.join(artifacts, 'oj-submission.png'), fullPage: true });
+    await detailEditor.fill('int main() { return 2; }');
+    await retry.click();
+    await detail.getByText(/请在 \d+ 秒后重试/).waitFor();
+    const refreshed = student.waitForResponse(response => response.url().endsWith('/submissions/' + judgeId));
+    await detail.getByRole('button', { name: '刷新', exact: true }).click();
+    await refreshed;
+    assert.equal(await detailEditor.inputValue(), 'int main() { return 2; }');
+    await retry.waitFor();
+    await detailEditor.fill(originalCode);
+    assert.equal(await retry.isVisible(), false);
+    await detail.getByRole('link', { name: '两数求和' }).click();
     await sumProblem.getByText('通过', { exact: true }).waitFor({ timeout: 5000 });
     assert.equal(await sumProblem.getByText('100 / 100 分', { exact: true }).count(), 1);
-    await student.getByRole('button', { name: '提交评测' }).click();
-    await student.getByText(/请在 \d+ 秒后重试/).waitFor();
     await student.getByRole('button', { name: '测试样例' }).click();
     await student.getByRole('heading', { name: '程序输出' }).waitFor();
     await student.getByRole('button', { name: '进入在线调试' }).click();
@@ -201,7 +223,7 @@ async function checkSumMath(paper) {
     await debug.getByRole('button', { name: '自定义输入' }).click();
     assert.equal(await customInput.inputValue(), '7 9');
     await debugEditor.fill('int main() {\n  return 1;\n}');
-    assert.equal(await debug.locator('.debug-line-numbers').textContent(), '1\n2\n3');
+    assert.equal(await debug.locator('.editor-line-numbers').textContent(), '1\n2\n3');
     const [customResponse] = await Promise.all([
       student.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/submissions')),
       debug.getByRole('button', { name: '在线运行' }).click()
@@ -242,23 +264,24 @@ async function checkSumMath(paper) {
     assert.ok(Math.abs(mobileReader.y + mobileReader.height - mobileEditor.y) <= 1);
     await student.keyboard.press('Escape');
     await student.getByRole('link', { name: '我的提交' }).click();
-    const judgeLink = student.getByRole('link', { name: /两数求和.*评测/ });
-    const judgeId = (await judgeLink.getAttribute('href')).split('/').at(-1);
+    const judgeLink = student.locator(`a[href="#submissions/${judgeId}"]`);
     await student.route(`**/api/oj/submissions/${judgeId}`, async route => {
       const response = await route.fetch();
-      const { verdict, score, ...record } = await response.json();
+      const { verdict, score, sample_verdict, cases, ...record } = await response.json();
       await route.fulfill({ json: { ...record, status: 'running' } });
     }, { times: 1 });
     await judgeLink.click();
-    const detail = student.locator('.submission-detail');
-    await detail.getByText('评测中', { exact: true }).waitFor();
-    await detail.getByText('int main() { return 0; }', { exact: true }).waitFor();
-    await detail.getByText('100 / 100 分', { exact: true }).waitFor({ timeout: 5000 });
+    await detail.locator('.detail-overview').getByText('评测中', { exact: true }).waitFor();
+    assert.equal(await detailEditor.inputValue(), originalCode);
+    await detail.locator('.detail-overview').getByText('100 / 100 分', { exact: true }).waitFor({ timeout: 5000 });
+    assert.equal(await student.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await student.screenshot({ path: path.join(artifacts, 'oj-submission-mobile.png'), fullPage: true });
     await student.getByRole('link', { name: '返回提交记录' }).click();
     await student.locator(`a[href="#submissions/${customId}"]`).click();
     await detail.getByRole('heading', { name: '自定义输入' }).waitFor();
     await detail.getByRole('heading', { name: '程序输出' }).waitFor();
     assert.deepEqual((await detail.locator('pre').allTextContents()).slice(0, 2), ['7 9', '7 9']);
+    assert.equal(await detailEditor.isEditable(), false);
 
     await student.getByRole('link', { name: '题单', exact: true }).click();
     const sheetId = (await openTile.getAttribute('href')).split('/').at(-1);
@@ -279,9 +302,38 @@ async function checkSumMath(paper) {
 
     await teacher.getByRole('link', { name: '提交记录' }).click();
     await teacher.getByRole('link', { name: /两数求和.*Ada.*评测/ }).click();
+    assert.equal(await teacher.getByRole('textbox', { name: 'C++17 源码' }).isEditable(), false);
     await teacher.getByRole('link', { name: '题目版本 v2' }).click();
     await teacher.getByText('1100', { exact: true }).waitFor();
     await checkSumMath(teacher.locator('.paper'));
+
+    await sumRow.click();
+    await sheetContext.getByRole('link', { name: /输出整数/ }).click();
+    await student.getByRole('button', { name: '进入在线调试' }).click();
+    await debugEditor.fill('int main() {}');
+    await debug.getByRole('button', { name: '提交评测' }).click();
+    await detail.getByRole('heading', { name: '提交记录详情' }).waitFor();
+    assert.equal(await debug.isVisible(), false);
+    assert.equal(await detailEditor.inputValue(), 'int main() {}');
+
+    await student.goto(`${base}/oj#submissions/${judgeId}`);
+    await detail.locator('.detail-overview').getByText('#' + judgeId, { exact: true }).waitFor();
+    await detailEditor.fill('int main() { return 3; }');
+    await retry.click();
+    const cooldown = detail.getByText(/请在 \d+ 秒后重试/);
+    await student.waitForFunction(previous => location.hash !== '#submissions/' + previous ||
+      /请在 \d+ 秒后重试/.test(document.querySelector('.detail-code-actions')?.textContent), judgeId);
+    if (await cooldown.isVisible()) {
+      const seconds = Number((await cooldown.innerText()).match(/\d+/)[0]);
+      await new Promise(resolve => setTimeout(resolve, (seconds + .1) * 1000));
+      await retry.click();
+    }
+    await student.waitForFunction(previous => location.hash !== '#submissions/' + previous, judgeId);
+    const resubmissionId = student.url().split('/').at(-1);
+    await detail.locator('.detail-overview').getByText('#' + resubmissionId, { exact: true }).waitFor();
+    await detail.locator('.detail-overview').getByText('100 / 100 分', { exact: true }).waitFor();
+    assert.equal(await detailEditor.inputValue(), 'int main() { return 3; }');
+    assert.equal(await retry.isVisible(), false);
     assert.deepEqual(errors, []);
     console.log('PASS: browser OJ management, login, history, editor, submission and version');
   } finally {
