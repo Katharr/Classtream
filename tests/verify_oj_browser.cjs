@@ -199,7 +199,11 @@ async function checkSumMath(paper) {
     assert.equal(await customInput.inputValue(), '7 9');
     await debugEditor.fill('int main() {\n  return 1;\n}');
     assert.equal(await debug.locator('.debug-line-numbers').textContent(), '1\n2\n3');
-    await debug.getByRole('button', { name: '在线运行' }).click();
+    const [customResponse] = await Promise.all([
+      student.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/submissions')),
+      debug.getByRole('button', { name: '在线运行' }).click()
+    ]);
+    const customId = (await customResponse.json()).id;
     await debug.getByText('运行完成', { exact: true }).waitFor();
     await debug.getByText('7 9', { exact: true }).waitFor();
     await debug.getByRole('button', { name: '提交评测' }).click();
@@ -234,8 +238,23 @@ async function checkSumMath(paper) {
     assert.ok(Math.abs(mobileReader.y + mobileReader.height - mobileEditor.y) <= 1);
     await student.keyboard.press('Escape');
     await student.getByRole('link', { name: '我的提交' }).click();
-    await student.getByRole('link', { name: /两数求和.*评测/ }).click();
-    await student.getByText('int main() { return 0; }', { exact: true }).waitFor();
+    const judgeLink = student.getByRole('link', { name: /两数求和.*评测/ });
+    const judgeId = (await judgeLink.getAttribute('href')).split('/').at(-1);
+    await student.route(`**/api/oj/submissions/${judgeId}`, async route => {
+      const response = await route.fetch();
+      const { verdict, score, ...record } = await response.json();
+      await route.fulfill({ json: { ...record, status: 'running' } });
+    }, { times: 1 });
+    await judgeLink.click();
+    const detail = student.locator('.submission-detail');
+    await detail.getByText('评测中', { exact: true }).waitFor();
+    await detail.getByText('int main() { return 0; }', { exact: true }).waitFor();
+    await detail.getByText('100 / 100 分', { exact: true }).waitFor({ timeout: 5000 });
+    await student.getByRole('link', { name: '返回提交记录' }).click();
+    await student.locator(`a[href="#submissions/${customId}"]`).click();
+    await detail.getByRole('heading', { name: '自定义输入' }).waitFor();
+    await detail.getByRole('heading', { name: '程序输出' }).waitFor();
+    assert.deepEqual((await detail.locator('pre').allTextContents()).slice(0, 2), ['7 9', '7 9']);
 
     await teacher.getByRole('link', { name: '提交记录' }).click();
     await teacher.getByRole('link', { name: /两数求和.*Ada.*评测/ }).click();

@@ -398,7 +398,9 @@ class OJStore:
 
     def submission(self, submission_id, student_id=None):
         with self.connect() as connection:
-            row = connection.execute('''SELECT sub.*, student.username, problem.title, problem.max_score
+            row = connection.execute('''SELECT sub.*, student.username, problem.title, problem.max_score,
+                    CASE WHEN sub.kind='sample' THEN COALESCE(sub.custom_input, problem.sample_input) END AS test_input,
+                    CASE WHEN sub.kind='sample' AND sub.custom_input IS NULL THEN problem.sample_output END AS expected_output
                 FROM oj_submissions sub JOIN oj_students student ON student.id=sub.student_id
                 JOIN oj_problem_versions problem ON problem.problem_id=sub.problem_id AND problem.version=sub.version
                 WHERE sub.id=? AND (? IS NULL OR sub.student_id=?)''', (submission_id, student_id, student_id)).fetchone()

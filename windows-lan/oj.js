@@ -427,13 +427,17 @@ function submissionList(records, before) {
 
 function submissionDetail(record, current) {
   const notice = errorLine();
-  const display = element('div', { class: 'judge-result', 'aria-live': 'polite' }, result(record));
-  if (record.status !== 'finished') pollSubmission(record.id, display, current, notice);
+  const updates = element('div', { class: 'judge-result', 'aria-live': 'polite' }, result(record));
+  if (record.status !== 'finished') pollSubmission(record.id, { updates, notice, showOutputHeading: true }, current);
+  const testData = record.kind === 'sample' ? element('div', { class: 'samples' },
+    element('section', {}, element('h3', {}, record.custom_input !== null ? '自定义输入' : '样例输入'), pre(record.test_input)),
+    record.expected_output !== null
+      ? element('section', {}, element('h3', {}, '预期输出'), pre(record.expected_output)) : null) : null;
   return [link('返回提交记录', '#submissions', 'back'),
     element('article', { class: 'paper submission-detail' }, title(record.title),
       element('p', { class: 'meta' }, `${teacher ? record.username + '　' : ''}${timeText(record.created_at)}　${record.kind === 'sample' ? '样例' : '评测'}　`,
         teacher ? link(`题目版本 v${record.version}`, `#problems/${record.problem_id}/${record.version}`) : `题目版本 v${record.version}`),
-      display, notice, element('h2', {}, '提交源码'), pre(record.source))];
+      testData, updates, notice, element('h2', {}, '提交源码'), pre(record.source))];
 }
 
 function roster(data) {
