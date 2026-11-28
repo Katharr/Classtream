@@ -74,6 +74,7 @@ class WindowsSandbox:
                                                     dword, pointer, text, pointer, pointer)),
             (self.kernel, handle, 'CreateJobObjectW', (pointer, text)),
             (self.kernel, boolean, 'SetInformationJobObject', (handle, ct.c_int, pointer, dword)),
+            (self.kernel, boolean, 'QueryInformationJobObject', (handle, ct.c_int, pointer, dword, pointer)),
             (self.kernel, boolean, 'AssignProcessToJobObject', (handle, handle)),
             (self.kernel, boolean, 'TerminateJobObject', (handle, win.UINT)),
             (self.kernel, boolean, 'TerminateProcess', (handle, win.UINT)),
@@ -127,7 +128,7 @@ class WindowsSandbox:
         if result.returncode:
             raise OSError(f'Could not configure OJ sandbox permissions for {directory}')
 
-    def run(self, argv, cwd, sid, stdin, seconds, memory_mb, stop, compiler_bin=None):
+    def run(self, argv, cwd, sid, stdin, seconds, memory_mb, stop, compiler_bin=None, usage=None):
         import msvcrt
 
         kernel = self.kernel
@@ -190,9 +191,15 @@ class WindowsSandbox:
                     kernel.TerminateProcess(process.process, 1)
                     raise error
                 pipe.close()
+                started = time.monotonic()
                 if kernel.ResumeThread(process.thread) == 0xffffffff:
                     raise ct.WinError(ct.get_last_error())
-                return self.collect(port, process.process, output, seconds, stop, cwd if compiler_bin else None)
+                result = self.collect(port, process.process, output, seconds, stop, cwd if compiler_bin else None)
+                if usage is not None:
+                    usage['time_ms'] = round((time.monotonic() - started) * 1000)
+                    if kernel.QueryInformationJobObject(job, 9, ct.byref(limits), ct.sizeof(limits), None):
+                        usage['memory_bytes'] = limits.peak_process
+                return result
             finally:
                 kernel.TerminateJobObject(job, 1)
                 kernel.WaitForSingleObject(process.process, 5000)

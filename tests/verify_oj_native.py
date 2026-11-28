@@ -74,6 +74,12 @@ def verify(data, scratch):
         for problem, (kind, verdict, points, source, _) in zip(problems, tests):
             result = run(problem, kind=kind, source=source)
             assert result['verdict'] == verdict and result['score'] == points, result
+            if kind == 'judge' and verdict != 'compile_error':
+                assert result['sample_verdict'] == ('accepted' if verdict == 'partial' else verdict), result
+                assert result['scoring'] == 'max' and len(result['cases']) == 2, result
+                for test in result['cases']:
+                    assert test['time_ms'] >= 0 and test['memory_bytes'] > 0, test
+                assert 'output' not in result and 'test_input' in result and result['test_input'] is None
         source = '#include <iostream>\nint main(){int a,b;if(std::cin>>a>>b)std::cout<<a+b;else std::cout<<"empty";}'
         for custom_input, expected in [('7 9\n', '16'), ('', 'empty')]:
             result = run(problems[2], kind='sample', source=source, custom_input=custom_input)

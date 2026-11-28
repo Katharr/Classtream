@@ -118,23 +118,39 @@ class WindowsJudge:
                 return None
             return dict(verdict='executed' if status == 'ok' else status,
                         score=0, output=output.decode('utf-8', 'replace')[:8000])
-        groups = ([dict(input=task['sample_input'], output=task['sample_output'], score=0)]
-                  if sample_only else task['groups'])
+        sample = dict(input=task['sample_input'], output=task['sample_output'], score=0)
+
+        def run_group(group, usage=None):
+            status, output = sandbox.run([directory / 'solution.exe'], directory, sid, group['input'].encode('utf-8'),
+                                         task['time_ms'] / 1000, task['memory_mb'], stop, usage=usage)
+            if status == 'ok':
+                status = 'accepted' if matches_output(output, group['output'].encode('utf-8')) else 'wrong_answer'
+            return status, output
+
+        result = {}
+        if not sample_only:
+            for example in task.get('sample_cases') or [sample]:
+                status, _ = run_group(example)
+                if stop.is_set():
+                    return None
+                if status != 'accepted':
+                    break
+            result['sample_verdict'] = status
+            result['scoring'] = 'sum' if task.get('sum_scores') else 'max'
+        groups = [sample] if sample_only else task['groups']
         cases = []
         score = 0
         for group in groups:
-            status, output = sandbox.run([directory / 'solution.exe'], directory, sid, group['input'].encode('utf-8'),
-                                         task['time_ms'] / 1000, task['memory_mb'], stop)
+            usage = {} if not sample_only else None
+            status, output = run_group(group, usage)
             if stop.is_set():
                 return None
-            if status == 'ok':
-                status = 'accepted' if matches_output(output, group['output'].encode('utf-8')) else 'wrong_answer'
-            cases.append(dict(verdict=status, points=group['score']))
+            cases.append(dict(verdict=status, points=group['score'], **(usage or {})))
             if status == 'accepted':
                 score = score + group['score'] if task.get('sum_scores') else max(score, group['score'])
         failed = [case['verdict'] for case in cases if case['verdict'] != 'accepted']
         verdict = ('partial' if score else failed[0]) if failed else 'accepted'
-        result = dict(verdict=verdict, score=score, cases=cases)
+        result.update(verdict=verdict, score=score, cases=cases)
         if sample_only:
             result['output'] = output.decode('utf-8', 'replace')[:8000]
         return result
