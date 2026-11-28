@@ -155,38 +155,68 @@ function showProblemProgress(node, problem) {
   node.replaceChildren(submission ? mark(submission) : badge('未提交', 'neutral'), element('span', {}, score));
 }
 
-function studentSheet(sheet, current) {
-  const progress = new Map(sheet.problems.map(problem => {
-    const node = element('span', { class: 'record-end', 'aria-live': 'polite' });
+function sheetProgress(sheet, current, className) {
+  const nodes = new Map();
+  const pending = new Map();
+  const isPending = submission => ['queued', 'running'].includes(submission?.status);
+  let watching = false;
+  for (const problem of sheet.problems) {
+    const node = element('span', { class: className, 'aria-live': 'polite' });
     showProblemProgress(node, problem);
-    return [problem.id, node];
-  }));
-  let pending = new Set(sheet.problems.filter(problem => ['queued', 'running'].includes(problem.latest_submission?.status))
-    .map(problem => problem.id));
+    nodes.set(problem.id, node);
+    if (isPending(problem.latest_submission)) pending.set(problem.id, problem.latest_submission);
+  }
 
   async function refreshProgress() {
     if (current !== revision) return;
+    const watched = new Map(pending);
     try {
       const updated = await api('/sheets/' + sheet.id);
       if (current !== revision) return;
-      const stillPending = new Set();
-      for (const problem of updated.problems) {
-        if (!pending.has(problem.id)) continue;
-        showProblemProgress(progress.get(problem.id), problem);
-        if (['queued', 'running'].includes(problem.latest_submission?.status)) stillPending.add(problem.id);
+      const problems = new Map(updated.problems.map(problem => [problem.id, problem]));
+      for (const [id, previous] of watched) {
+        if (pending.get(id) !== previous) continue;
+        const problem = problems.get(id);
+        const submission = problem?.latest_submission;
+        if (problem && (submission?.status !== previous.status || !isPending(submission))) {
+          showProblemProgress(nodes.get(id), problem);
+        }
+        if (isPending(submission)) pending.set(id, submission);
+        else pending.delete(id);
       }
-      pending = stillPending;
     } catch (error) {
-      if ([401, 403, 404].includes(error.status)) return;
+      if ([401, 403, 404].includes(error.status)) {
+        watching = false;
+        return;
+      }
     }
-    if (pending.size && current === revision) setTimeout(refreshProgress, 1500);
+    watching = false;
+    watch();
   }
-  if (pending.size) setTimeout(refreshProgress, 1500);
 
+  function watch() {
+    if (watching || !pending.size || current !== revision) return;
+    watching = true;
+    setTimeout(refreshProgress, 1000);
+  }
+  watch();
+  return {
+    nodes,
+    submitted(problem, submission) {
+      const latest = { ...submission, max_score: problem.max_score };
+      showProblemProgress(nodes.get(problem.id), { ...problem, latest_submission: latest });
+      pending.set(problem.id, latest);
+      watch();
+    }
+  };
+}
+
+function studentSheet(sheet, current) {
+  const { nodes } = sheetProgress(sheet, current, 'record-end');
   return [link('返回题单', '#sheets', 'back'), element('section', { class: 'catalog' },
     heading(sheet.title, sheetBadge(sheet)), rows(sheet.problems, (problem, index) =>
       element('a', { class: 'row-link problem-row', href: `#sheets/${sheet.id}/${problem.id}` },
-        element('strong', {}, `${index + 1}. ${problem.title}`), progress.get(problem.id)), '题单暂无题目'))];
+        element('strong', {}, `${index + 1}. ${problem.title}`), nodes.get(problem.id)), '题单暂无题目'))];
 }
 
 function timeText(seconds) {
@@ -232,11 +262,12 @@ function pollSubmission(id, area, current) {
   setTimeout(poll, 750);
 }
 
-function sheetContext(sheet, problem) {
+function sheetContext(sheet, problem, progress) {
   const problemLinks = sheet.problems.map((item, index) => {
     const attributes = { href: `#sheets/${sheet.id}/${item.id}`, 'aria-current': item.id === problem.id ? 'page' : undefined };
     return element('li', {}, element('a', attributes,
-      element('span', { class: 'problem-number' }, `T${index + 1}`), element('span', {}, item.title)));
+      element('span', { class: 'problem-number' }, `T${index + 1}`),
+      element('span', {}, item.title, progress.get(item.id))));
   });
   return element('aside', { class: 'sheet-context', 'aria-labelledby': 'sheet-context-title' },
     element('h2', { id: 'sheet-context-title', class: 'panel-title' }, '题单信息'),
@@ -283,11 +314,12 @@ function problemPaper(problem, className) {
 }
 
 function studentProblem(problem, sheet, current) {
+  const progress = sheetProgress(sheet, current, 'sheet-problem-progress');
   return [link('返回题单', `#sheets/${sheet.id}`, 'back mobile-sheet-back'),
     element('div', { class: 'problem-layout' },
       element('div', { class: 'problem-main' }, problemPaper(problem, 'paper problem-paper'),
-        problem.open ? submissionPanel(problem, sheet.id, current) : null),
-      sheetContext(sheet, problem))];
+        problem.open ? submissionPanel(problem, sheet.id, current, progress.submitted) : null),
+      sheetContext(sheet, problem, progress.nodes))];
 }
 
 const cppTypes = new Set('auto bool char char16_t char32_t double float int long short signed unsigned void wchar_t'.split(' '));
@@ -404,7 +436,7 @@ function debugDialog(problem, area, run, submit) {
   return dialog;
 }
 
-function submissionPanel(problem, sheetId, current) {
+function submissionPanel(problem, sheetId, current, onSubmitted) {
   const draft = `oj-draft:${identity.id}:${problem.id}`;
   const initialSource = sessionStorage.getItem(draft) || '';
   function saveDraft(source, otherEditor) {
@@ -428,6 +460,7 @@ function submissionPanel(problem, sheetId, current) {
       if (customInput !== null) payload.custom_input = customInput;
       const submission = await api(`/sheets/${sheetId}/problems/${problem.id}/submissions`, 'POST', payload);
       if (current !== revision) return;
+      if (kind === 'judge') onSubmitted(problem, submission);
       area.updates.replaceChildren(mark(submission), link('查看提交', '#submissions/' + submission.id));
       pollSubmission(submission.id, area, current);
     } catch (error) {

@@ -116,6 +116,7 @@ async function checkSumMath(paper) {
     assert.equal(contextBox.y, paperBox.y);
     const sumProblem = sheetContext.getByRole('link', { name: /两数求和/ });
     assert.equal(await sumProblem.getAttribute('aria-current'), 'page');
+    await sumProblem.getByText('未提交', { exact: true }).waitFor({ timeout: 3000 });
     await sourceEditor.fill('int main() { return 0; }');
     await sheetContext.getByRole('link', { name: /输出整数/ }).click();
     await student.getByRole('heading', { name: '输出整数', exact: true }).waitFor();
@@ -132,7 +133,9 @@ async function checkSumMath(paper) {
     await student.getByRole('button', { name: '刷新题面' }).waitFor({ state: 'hidden' });
     assert.equal(await sourceEditor.inputValue(), 'int main() { return 0; }');
     await student.getByRole('button', { name: '提交评测' }).click();
-    await student.getByText('100 / 100 分', { exact: true }).waitFor();
+    await submissionPanel.getByText('100 / 100 分', { exact: true }).waitFor();
+    await sumProblem.getByText('通过', { exact: true }).waitFor({ timeout: 5000 });
+    assert.equal(await sumProblem.getByText('100 / 100 分', { exact: true }).count(), 1);
     await student.getByRole('button', { name: '提交评测' }).click();
     await student.getByText(/请在 \d+ 秒后重试/).waitFor();
     await student.getByRole('button', { name: '测试样例' }).click();
@@ -209,6 +212,7 @@ async function checkSumMath(paper) {
     await debug.getByRole('button', { name: '提交评测' }).click();
     await debug.getByText(/请在 \d+ 秒后重试/).waitFor();
     await debug.getByRole('button', { name: '返回题目详情' }).click();
+    assert.equal(await sumProblem.getByText('100 / 100 分', { exact: true }).count(), 1);
     assert.equal(await sourceEditor.inputValue(), 'int main() {\n  return 1;\n}');
     const mainSyntax = submissionPanel.locator('.code-panel .editor-syntax');
     assert.equal(await mainSyntax.locator('.syntax-keyword').textContent(), 'return');
