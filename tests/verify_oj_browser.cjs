@@ -256,6 +256,23 @@ async function checkSumMath(paper) {
     await detail.getByRole('heading', { name: '程序输出' }).waitFor();
     assert.deepEqual((await detail.locator('pre').allTextContents()).slice(0, 2), ['7 9', '7 9']);
 
+    await student.getByRole('link', { name: '题单', exact: true }).click();
+    const sheetId = (await openTile.getAttribute('href')).split('/').at(-1);
+    await student.route(`**/api/oj/sheets/${sheetId}`, async route => {
+      const response = await route.fetch();
+      const sheet = await response.json();
+      const submission = sheet.problems[0].latest_submission;
+      Object.assign(submission, { status: 'queued', score: null, verdict: null });
+      await route.fulfill({ json: sheet });
+    }, { times: 1 });
+    await openTile.click();
+    const sumRow = student.getByRole('link', { name: /两数求和/ });
+    await sumRow.getByText('排队中', { exact: true }).waitFor();
+    assert.equal(await sumRow.getByText('— / 100 分', { exact: true }).count(), 1);
+    await sumRow.getByText('通过', { exact: true }).waitFor();
+    assert.equal(await sumRow.getByText('100 / 100 分', { exact: true }).count(), 1);
+    await student.getByRole('link', { name: /输出整数/ }).getByText('未提交', { exact: true }).waitFor();
+
     await teacher.getByRole('link', { name: '提交记录' }).click();
     await teacher.getByRole('link', { name: /两数求和.*Ada.*评测/ }).click();
     await teacher.getByRole('link', { name: '题目版本 v2' }).click();

@@ -149,11 +149,44 @@ function sheetList(sheets) {
       element('strong', {}, sheet.title), sheetBadge(sheet)), '暂无题单'));
 }
 
-function studentSheet(sheet) {
+function showProblemProgress(node, problem) {
+  const submission = problem.latest_submission;
+  const score = submission ? `${submission.score ?? '—'} / ${submission.max_score} 分` : `满分 ${problem.max_score} 分`;
+  node.replaceChildren(submission ? mark(submission) : badge('未提交', 'neutral'), element('span', {}, score));
+}
+
+function studentSheet(sheet, current) {
+  const progress = new Map(sheet.problems.map(problem => {
+    const node = element('span', { class: 'record-end', 'aria-live': 'polite' });
+    showProblemProgress(node, problem);
+    return [problem.id, node];
+  }));
+  let pending = new Set(sheet.problems.filter(problem => ['queued', 'running'].includes(problem.latest_submission?.status))
+    .map(problem => problem.id));
+
+  async function refreshProgress() {
+    if (current !== revision) return;
+    try {
+      const updated = await api('/sheets/' + sheet.id);
+      if (current !== revision) return;
+      const stillPending = new Set();
+      for (const problem of updated.problems) {
+        if (!pending.has(problem.id)) continue;
+        showProblemProgress(progress.get(problem.id), problem);
+        if (['queued', 'running'].includes(problem.latest_submission?.status)) stillPending.add(problem.id);
+      }
+      pending = stillPending;
+    } catch (error) {
+      if ([401, 403, 404].includes(error.status)) return;
+    }
+    if (pending.size && current === revision) setTimeout(refreshProgress, 1500);
+  }
+  if (pending.size) setTimeout(refreshProgress, 1500);
+
   return [link('返回题单', '#sheets', 'back'), element('section', { class: 'catalog' },
     heading(sheet.title, sheetBadge(sheet)), rows(sheet.problems, (problem, index) =>
       element('a', { class: 'row-link problem-row', href: `#sheets/${sheet.id}/${problem.id}` },
-        element('strong', {}, `${index + 1}. ${problem.title}`), element('span', { class: 'meta' }, `${problem.max_score} 分`)), '题单暂无题目'))];
+        element('strong', {}, `${index + 1}. ${problem.title}`), progress.get(problem.id)), '题单暂无题目'))];
 }
 
 function timeText(seconds) {
@@ -638,7 +671,7 @@ async function view(section, id, extra, current) {
       const [sheet, problems] = await Promise.all([id === 'new' ? null : api('/sheets/' + id), api('/problems')]);
       return sheetEditor(sheet, problems);
     }
-    if (!extra) return studentSheet(await api('/sheets/' + id));
+    if (!extra) return studentSheet(await api('/sheets/' + id), current);
     const [problem, sheet] = await Promise.all([api(`/sheets/${id}/problems/${extra}`), api(`/sheets/${id}`)]);
     return studentProblem(problem, sheet, current);
   }

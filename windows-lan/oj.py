@@ -143,8 +143,8 @@ def install_oj(application, store, queue, local_teacher, is_local, prepared_libr
         return JSONResponse(store.sheets(), headers=NO_CACHE)
 
     @student.get('/sheets/{sheet_id}')
-    def sheet(sheet_id: RouteID, _=Depends(session)):
-        return JSONResponse(store.sheet(sheet_id), headers=NO_CACHE)
+    def sheet(sheet_id: RouteID, identity=Depends(session)):
+        return JSONResponse(store.sheet(sheet_id, identity['id']), headers=NO_CACHE)
 
     @student.get('/sheets/{sheet_id}/problems/{problem_id}')
     def sheet_problem(sheet_id: RouteID, problem_id: RouteID, _=Depends(session)):

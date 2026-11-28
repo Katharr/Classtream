@@ -73,6 +73,9 @@ def verify(data):
         assert [(row['id'], row['open']) for row in student.get('/api/oj/sheets').json()] == [(second, True), (first, False)]
         history = student.get(f'/api/oj/sheets/{first}').json()
         assert [row['id'] for row in history['problems']] == [other_id, problem_id]
+        assert all(row['latest_submission'] is None for row in history['problems'])
+        teacher_sheet = teacher.get(f'/api/oj/teacher/sheets/{first}').json()
+        assert all('latest_submission' not in row for row in teacher_sheet['problems'])
         route = f'/api/oj/sheets/{first}/problems/{problem_id}'
         visible = student.get(route).json()
         assert visible['sample_output'] == '3\n' and not visible['open']
@@ -104,6 +107,8 @@ def verify(data):
         submission_id = accepted.json()['id']
         submission = f'/api/oj/submissions/{submission_id}'
         assert wait(student, submission, 'running')['version'] == 2
+        assert student.get(f'/api/oj/sheets/{first}').json()['problems'][1]['latest_submission'] == {
+            'status': 'running', 'score': None, 'verdict': None, 'max_score': 10}
         assert submit(student, route, 'sample').status_code == 202
         assert submit(student, route, 'sample').status_code == 202
         assert submit(student, route).status_code == 429
@@ -124,6 +129,7 @@ def verify(data):
             assert learner.post('/api/oj/login', json=dict(username=username, password=password)).status_code == 200
             others.append(learner)
         assert others[0].get(submission).status_code == 404
+        assert all(row['latest_submission'] is None for row in others[0].get(f'/api/oj/sheets/{first}').json()['problems'])
         with ThreadPoolExecutor(max_workers=19) as pool:
             queued = list(pool.map(lambda learner: submit(learner, route), others))
         assert all(response.status_code == 202 for response in queued), [response.text for response in queued]
@@ -132,6 +138,10 @@ def verify(data):
         gate.set()
         finished = wait(student, submission, 'finished')
         assert finished['version'] == 2 and finished['verdict'] == 'accepted' and finished['score'] == 10
+        current = student.get(f'/api/oj/sheets/{first}').json()['problems'][1]
+        assert current['version'] == 3 and current['latest_submission'] == {
+            'status': 'finished', 'score': 10, 'verdict': 'accepted', 'max_score': 10}
+        assert student.get(f'/api/oj/sheets/{second}').json()['problems'][0]['latest_submission'] is None
         for learner, response in zip(others, queued):
             record = wait(learner, f"/api/oj/submissions/{response.json()['id']}", 'finished')
             assert record['version'] == 3 and record['verdict'] == 'accepted'

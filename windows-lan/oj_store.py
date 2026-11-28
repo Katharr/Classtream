@@ -69,6 +69,7 @@ class OJStore:
                 );
                 DROP INDEX IF EXISTS oj_cooldown;
                 CREATE INDEX IF NOT EXISTS oj_judge_cooldown ON oj_submissions(student_id, problem_id, id DESC) WHERE kind='judge';
+                CREATE INDEX IF NOT EXISTS oj_sheet_progress ON oj_submissions(student_id, sheet_id, problem_id, id DESC) WHERE kind='judge';
                 CREATE INDEX IF NOT EXISTS oj_student_history ON oj_submissions(student_id, id DESC);
                 CREATE INDEX IF NOT EXISTS oj_queue ON oj_submissions(status, id);
             ''')
@@ -285,12 +286,27 @@ class OJStore:
             raise OJError(404, '题单不存在')
         return row
 
-    def sheet(self, sheet_id):
+    def sheet(self, sheet_id, student_id=None):
         with self.connect() as connection:
             result = self.sheet_summary(self.require_sheet(connection, sheet_id))
             result['problems'] = [self.problem_summary(connection, row['problem_id'], row['version'])
                                   for row in connection.execute(
                 'SELECT problem_id, version FROM oj_sheet_problems WHERE sheet_id=? ORDER BY position', (sheet_id,))]
+            if student_id is not None:
+                rows = connection.execute('''SELECT sub.problem_id, sub.status, version.max_score,
+                        json_extract(sub.result_json, '$.verdict') AS verdict,
+                        json_extract(sub.result_json, '$.score') AS score
+                    FROM oj_sheet_problems sp
+                    JOIN oj_submissions sub ON sub.id=(
+                        SELECT id FROM oj_submissions
+                        WHERE student_id=? AND sheet_id=sp.sheet_id AND problem_id=sp.problem_id AND kind='judge'
+                        ORDER BY id DESC LIMIT 1)
+                    JOIN oj_problem_versions version ON version.problem_id=sub.problem_id AND version.version=sub.version
+                    WHERE sp.sheet_id=?''', (student_id, sheet_id))
+                progress = {row['problem_id']: dict(status=row['status'], verdict=row['verdict'],
+                                                   score=row['score'], max_score=row['max_score']) for row in rows}
+                for problem in result['problems']:
+                    problem['latest_submission'] = progress.get(problem['id'])
             return result
 
     def save_sheet(self, sheet, sheet_id=None):
